@@ -243,9 +243,9 @@ class GmailSender {
             throw new Error(`❌ El asunto excede los ${this.config.MAX_SUBJECT_LENGTH} caracteres.`);
         }
 
-        if (htmlContent.length > this.config.MAX_BODY_LENGTH) {
-            throw new Error(`❌ El contenido excede los ${this.config.MAX_BODY_LENGTH} caracteres.`);
-        }
+        //if (htmlContent.length > this.config.MAX_BODY_LENGTH) {
+          //  throw new Error(`❌ El contenido excede los ${this.config.MAX_BODY_LENGTH} caracteres.`);
+       // }
 
         const validation = this.validateAttachments(attachments);
         if (!validation.valid) {
