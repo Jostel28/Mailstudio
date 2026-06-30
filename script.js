@@ -53,12 +53,99 @@ function updatePreview() {
 
 function getCurrentFontSize(element) {
     const size = window.getComputedStyle(element).fontSize;
-    return parseInt(size);
+    return parseInt(size) || 16;
+}
+
+// ============================================
+// FUNCIONES DE FORMATO CORREGIDAS
+// ============================================
+
+function applyFormat(command) {
+    document.execCommand(command, false, null);
+    updatePreview();
+    editor.focus();
+}
+
+function applyAlign(align) {
+    document.execCommand('justify' + align.charAt(0).toUpperCase() + align.slice(1), false, null);
+    updatePreview();
+    editor.focus();
+}
+
+function applyFontSize(size) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount || selection.rangeCount === 0) {
+        editor.style.fontSize = size;
+        updatePreview();
+        return;
+    }
+    
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) {
+        editor.style.fontSize = size;
+        updatePreview();
+        return;
+    }
+    
+    try {
+        document.execCommand('fontSize', false, '7');
+        const fontElements = editor.querySelectorAll('font[size="7"]');
+        fontElements.forEach(el => {
+            el.style.fontSize = size;
+            el.removeAttribute('size');
+        });
+    } catch (e) {
+        try {
+            const span = document.createElement('span');
+            span.style.fontSize = size;
+            range.surroundContents(span);
+        } catch (err) {
+            console.warn('No se pudo aplicar el tamaño:', err);
+        }
+    }
+    updatePreview();
+    editor.focus();
+}
+
+function applyFontFamily(font) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount || selection.rangeCount === 0) {
+        editor.style.fontFamily = font;
+        updatePreview();
+        return;
+    }
+    
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) {
+        editor.style.fontFamily = font;
+        updatePreview();
+        return;
+    }
+    
+    try {
+        document.execCommand('fontName', false, font);
+    } catch (e) {
+        try {
+            const span = document.createElement('span');
+            span.style.fontFamily = font;
+            range.surroundContents(span);
+        } catch (err) {
+            console.warn('No se pudo aplicar la fuente:', err);
+        }
+    }
+    updatePreview();
+    editor.focus();
 }
 
 function increaseFontSize() {
     const selection = window.getSelection();
-    if (!selection.rangeCount) return;
+    if (!selection.rangeCount || selection.rangeCount === 0) {
+        let currentSize = getCurrentFontSize(editor);
+        let newSize = Math.min(currentSize + 2, 72);
+        editor.style.fontSize = newSize + 'px';
+        updatePreview();
+        return;
+    }
     
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
@@ -69,21 +156,48 @@ function increaseFontSize() {
         return;
     }
     
-    let container = range.commonAncestorContainer;
-    if (container.nodeType === 3) container = container.parentNode;
-    
-    let currentSize = getCurrentFontSize(container);
-    let newSize = Math.min(currentSize + 2, 72);
-    
-    const span = document.createElement('span');
-    span.style.fontSize = newSize + 'px';
-    range.surroundContents(span);
+    try {
+        let container = range.commonAncestorContainer;
+        if (container.nodeType === 3) container = container.parentNode;
+        let currentSize = container ? (parseInt(window.getComputedStyle(container).fontSize) || 16) : 16;
+        let newSize = Math.min(currentSize + 2, 72);
+        
+        document.execCommand('fontSize', false, '7');
+        const fontElements = editor.querySelectorAll('font[size="7"]');
+        fontElements.forEach(el => {
+            el.style.fontSize = newSize + 'px';
+            el.removeAttribute('size');
+        });
+    } catch (e) {
+        try {
+            let currentSize = 16;
+            let container = range.commonAncestorContainer;
+            if (container.nodeType === 3) container = container.parentNode;
+            if (container) {
+                currentSize = parseInt(window.getComputedStyle(container).fontSize) || 16;
+            }
+            let newSize = Math.min(currentSize + 2, 72);
+            
+            const span = document.createElement('span');
+            span.style.fontSize = newSize + 'px';
+            range.surroundContents(span);
+        } catch (err) {
+            console.warn('No se pudo aumentar el tamaño:', err);
+        }
+    }
     updatePreview();
+    editor.focus();
 }
 
 function decreaseFontSize() {
     const selection = window.getSelection();
-    if (!selection.rangeCount) return;
+    if (!selection.rangeCount || selection.rangeCount === 0) {
+        let currentSize = getCurrentFontSize(editor);
+        let newSize = Math.max(currentSize - 2, 8);
+        editor.style.fontSize = newSize + 'px';
+        updatePreview();
+        return;
+    }
     
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
@@ -94,60 +208,37 @@ function decreaseFontSize() {
         return;
     }
     
-    let container = range.commonAncestorContainer;
-    if (container.nodeType === 3) container = container.parentNode;
-    
-    let currentSize = getCurrentFontSize(container);
-    let newSize = Math.max(currentSize - 2, 8);
-    
-    const span = document.createElement('span');
-    span.style.fontSize = newSize + 'px';
-    range.surroundContents(span);
-    updatePreview();
-}
-
-function applyFormat(command) {
-    document.execCommand(command, false, null);
-    updatePreview();
-}
-
-function applyAlign(align) {
-    document.execCommand('justify' + align.charAt(0).toUpperCase() + align.slice(1), false, null);
-    updatePreview();
-}
-
-function applyFontSize(size) {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return;
-    
-    const range = selection.getRangeAt(0);
-    if (range.collapsed) {
-        editor.style.fontSize = size;
-        updatePreview();
-        return;
+    try {
+        let container = range.commonAncestorContainer;
+        if (container.nodeType === 3) container = container.parentNode;
+        let currentSize = container ? (parseInt(window.getComputedStyle(container).fontSize) || 16) : 16;
+        let newSize = Math.max(currentSize - 2, 8);
+        
+        document.execCommand('fontSize', false, '7');
+        const fontElements = editor.querySelectorAll('font[size="7"]');
+        fontElements.forEach(el => {
+            el.style.fontSize = newSize + 'px';
+            el.removeAttribute('size');
+        });
+    } catch (e) {
+        try {
+            let currentSize = 16;
+            let container = range.commonAncestorContainer;
+            if (container.nodeType === 3) container = container.parentNode;
+            if (container) {
+                currentSize = parseInt(window.getComputedStyle(container).fontSize) || 16;
+            }
+            let newSize = Math.max(currentSize - 2, 8);
+            
+            const span = document.createElement('span');
+            span.style.fontSize = newSize + 'px';
+            range.surroundContents(span);
+        } catch (err) {
+            console.warn('No se pudo disminuir el tamaño:', err);
+        }
     }
-    
-    const span = document.createElement('span');
-    span.style.fontSize = size;
-    range.surroundContents(span);
     updatePreview();
-}
-
-function applyFontFamily(font) {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return;
-    
-    const range = selection.getRangeAt(0);
-    if (range.collapsed) {
-        editor.style.fontFamily = font;
-        updatePreview();
-        return;
-    }
-    
-    const span = document.createElement('span');
-    span.style.fontFamily = font;
-    range.surroundContents(span);
-    updatePreview();
+    editor.focus();
 }
 
 // ============================================
@@ -212,7 +303,6 @@ function updateAttachmentsPreview() {
     html += '</div>';
     container.innerHTML = html;
     
-    // Actualizar vista previa
     let previewHtml = '';
     if (attachments.length > 0) {
         previewHtml = '<div style="background:#f1f5f9; padding:8px; border-radius:8px; margin-top:10px;"><strong>📎 Adjuntos:</strong><br>';
@@ -542,7 +632,6 @@ async function sendWithGmail() {
         return;
     }
 
-    // 📌 Validar límite de 500 correos por día
     const stats = gmailSender.getStats();
     if (currentRecipients.length > stats.remaining) {
         if (!confirm(`⚠️ Solo te quedan ${stats.remaining} correos para hoy.\n` +
@@ -553,7 +642,6 @@ async function sendWithGmail() {
         currentRecipients = currentRecipients.slice(0, stats.remaining);
     }
     
-    // 📌 Validar archivos adjuntos (cantidad y tamaño)
     const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
     const MAX_FILES = 10;
     let totalSize = 0;
@@ -576,7 +664,6 @@ async function sendWithGmail() {
         return;
     }
 
-    // 📌 Confirmar envío
     const total = currentRecipients.length;
     const batches = Math.ceil(total / 50);
     const timeEstimate = batches * 3;
@@ -590,14 +677,12 @@ async function sendWithGmail() {
         return;
     }
 
-    // 📌 Preparar UI
     const originalText = sendBtn.innerHTML;
     sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando archivos...';
     sendBtn.disabled = true;
     sendMessage.style.display = 'none';
 
     try {
-        // 📌 PROCESAR ARCHIVOS ADJUNTOS (convertir a Base64)
         const attachmentsBase64 = [];
         let processed = 0;
         const totalFiles = attachments.length;
@@ -615,7 +700,6 @@ async function sendWithGmail() {
             processed++;
         }
 
-        // 📌 Construir HTML final del correo
         const finalHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                 <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
@@ -637,7 +721,6 @@ async function sendWithGmail() {
             </div>
         `;
 
-        // 📌 Enviar con adjuntos
         sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Enviando correos...`;
         
         const results = await gmailSender.sendBatch(
