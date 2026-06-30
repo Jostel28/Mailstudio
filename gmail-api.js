@@ -19,14 +19,14 @@ class GmailSender {
         // CONFIGURACIÓN DE LÍMITES
         // ============================================
         this.config = {
-            // Límites de Gmail
+            // Límites de Gmail - SOLO LOS ESENCIALES
             MAX_DAILY: 500,
             MAX_PER_BATCH: 50,
             MAX_EMAIL_SIZE: 25 * 1024 * 1024,
             MAX_TOTAL_ATTACHMENTS: 10,
             MAX_ATTACHMENT_SIZE: 25 * 1024 * 1024,
             MAX_SUBJECT_LENGTH: 255,
-            MAX_BODY_LENGTH: 500000,
+            // ✅ ELIMINADO: MAX_BODY_LENGTH - ya no se valida
             
             // Límites de tiempo
             DELAY_BETWEEN_BATCHES: 3000,
@@ -229,7 +229,7 @@ class GmailSender {
     }
 
     // ============================================
-    // ENVÍO DE EMAIL CON ADJUNTOS
+    // 🔧 ENVÍO DE EMAIL CON ADJUNTOS - SIN VALIDACIÓN DE CONTENIDO
     // ============================================
     async sendEmail(to, subject, htmlContent, attachments = []) {
         if (!this.accessToken) {
@@ -239,19 +239,18 @@ class GmailSender {
         const recipientsCount = Array.isArray(to) ? to.length : 1;
         this.checkDailyLimit(recipientsCount);
 
+        // ✅ SOLO VALIDACIÓN DE ASUNTO (255 caracteres)
         if (subject.length > this.config.MAX_SUBJECT_LENGTH) {
             throw new Error(`❌ El asunto excede los ${this.config.MAX_SUBJECT_LENGTH} caracteres.`);
         }
 
-        //if (htmlContent.length > this.config.MAX_BODY_LENGTH) {
-          //  throw new Error(`❌ El contenido excede los ${this.config.MAX_BODY_LENGTH} caracteres.`);
-       // }
-
+        // ✅ VALIDACIÓN DE ADJUNTOS (tamaño y cantidad)
         const validation = this.validateAttachments(attachments);
         if (!validation.valid) {
             throw new Error(validation.errors.join('\n'));
         }
 
+        // ✅ CONSTRUIR EMAIL (SIN validación de contenido)
         const email = this.buildEmailMime(to, subject, htmlContent, attachments);
         
         let encodedEmail;
@@ -294,7 +293,7 @@ class GmailSender {
     }
 
     // ============================================
-    // ENVÍO POR LOTES
+    // 🔧 ENVÍO POR LOTES - SIN VALIDACIÓN DE CONTENIDO
     // ============================================
     async sendBatch(recipients, subject, htmlContent, batchSize = 50, attachments = [], onProgress) {
         if (!this.accessToken) {
@@ -303,6 +302,7 @@ class GmailSender {
 
         this.checkDailyLimit(recipients.length);
 
+        // ✅ SOLO VALIDACIÓN DE ADJUNTOS
         const validation = this.validateAttachments(attachments);
         if (!validation.valid) {
             throw new Error(validation.errors.join('\n'));
