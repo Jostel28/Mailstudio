@@ -26,7 +26,7 @@ class GmailSender {
             MAX_TOTAL_ATTACHMENTS: 10,
             MAX_ATTACHMENT_SIZE: 25 * 1024 * 1024,
             MAX_SUBJECT_LENGTH: 255,
-            MAX_BODY_LENGTH: 50000,
+            MAX_BODY_LENGTH: 500000,
             
             // Límites de tiempo
             DELAY_BETWEEN_BATCHES: 3000,
