@@ -156,38 +156,39 @@ class GmailSender {
     // ENVÍO DE EMAIL
     // ============================================
     async sendEmail(to, subject, htmlContent, attachments = []) {
-        if (!this.accessToken) {
-            throw new Error('No hay sesión activa. Conecta tu Gmail primero.');
-        }
-
-        const recipientsCount = Array.isArray(to) ? to.length : 1;
-        this.checkDailyLimit(recipientsCount);
-
-        const email = this.buildEmailMime(to, subject, htmlContent, attachments);
-        
-        const encodedEmail = btoa(email)
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
-
-        try {
-            const response = await gapi.client.gmail.users.messages.send({
-                userId: 'me',
-                resource: { raw: encodedEmail }
-            });
-            
-            this.stats.sentToday += recipientsCount;
-            console.log(`✅ Email enviado (${this.stats.sentToday}/${this.config.MAX_DAILY} hoy)`);
-            return response.result;
-            
-        } catch (error) {
-            console.error('❌ Error enviando:', error);
-            if (error.status === 429) {
-                throw new Error('⏳ Demasiadas solicitudes. Espera unos segundos y vuelve a intentar.');
-            }
-            throw error;
-        }
+    if (!this.accessToken) {
+        throw new Error('No hay sesión activa. Conecta tu Gmail primero.');
     }
+
+    const recipientsCount = Array.isArray(to) ? to.length : 1;
+    this.checkDailyLimit(recipientsCount);
+
+    const email = this.buildEmailMime(to, subject, htmlContent, attachments);
+    
+    const encodedEmail = btoa(email)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+    try {
+        const response = await gapi.client.gmail.users.messages.send({
+            userId: 'me',
+            resource: { raw: encodedEmail }
+        });
+        
+        this.stats.sentToday += recipientsCount;
+        console.log(`✅ Email enviado (${this.stats.sentToday}/${this.config.MAX_DAILY} hoy)`);
+        return response.result;
+        
+    } catch (error) {
+        console.error('❌ Error enviando:', error);
+        // Mostrar el error específico de Gmail
+        if (error.result && error.result.error) {
+            throw new Error(`Gmail dice: ${error.result.error.message}`);
+        }
+        throw error;
+    }
+}
 
     // ============================================
     // ENVÍO POR LOTES
