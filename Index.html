@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MailStudio - Editor de Campaña</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Panel de conexión Gmail -->
+<div class="gmail-connect-panel" style="background: #f0f9ff; padding: 15px; border-radius: 12px; margin: 15px; border: 1px solid #bae6fd;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <i class="fas fa-envelope" style="color: #0ea5e9;"></i>
+            <strong style="margin-left: 8px;">Cuenta de envío:</strong>
+            <span id="gmailStatus" style="margin-left: 10px; color: #64748b;">
+                <i class="fas fa-circle-exclamation"></i> No conectado
+            </span>
+        </div>
+        <div>
+            <button id="connectGmailBtn" class="gmail-btn" style="background: #0ea5e9; color: white; border: none; padding: 8px 20px; border-radius: 20px; cursor: pointer;">
+                <i class="fab fa-google"></i> Conectar con Gmail
+            </button>
+            <button id="disconnectGmailBtn" class="gmail-btn" style="background: #64748b; color: white; border: none; padding: 8px 20px; border-radius: 20px; cursor: pointer; display: none;">
+                <i class="fas fa-sign-out-alt"></i> Desconectar
+            </button>
+        </div>
+    </div>
+    <div id="quotaInfo" style="font-size: 12px; margin-top: 10px; color: #475569;"></div>
+</div>
+
+<div class="mailstudio-container">
+    <div class="mailstudio-header" id="mainHeader">
+        <h1><i class="fas fa-envelope"></i> MailStudio — Editor de Campaña</h1>
+    </div>
+
+    <div class="nav-menu">
+        <div class="nav-item active" data-tab="editor">Editor</div>
+        <div class="nav-item" data-tab="preview">Vista previa</div>
+        <div class="nav-item" data-tab="destinatarios">Destinatarios</div>
+        <div class="nav-item" data-tab="plantillas">Plantillas</div>
+    </div>
+
+    <div class="main-layout">
+        <div class="editor-panel">
+            <div class="form-group">
+                <label><i class="fas fa-tag"></i> Asunto:</label>
+                <input type="text" id="subjectInput" placeholder="Sin asunto" value="¡Vacaciones en la Fundación Rafael Pombo!">
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-image"></i> Logo superior:</label>
+                <input type="file" id="topLogoUpload" accept="image/*" style="display:none">
+                <button class="attach-btn" onclick="document.getElementById('topLogoUpload').click()">
+                    <i class="fas fa-upload"></i> Cambiar logo superior
+                </button>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-edit"></i> Contenido del correo:</label>
+                <div class="format-toolbar">
+                    <select id="fontSelect" class="format-select">
+                        <option value="Inter, sans-serif">Inter</option>
+                        <option value="Playfair Display, serif">Playfair</option>
+                        <option value="Poppins, sans-serif">Poppins</option>
+                        <option value="Arial, sans-serif">Arial</option>
+                    </select>
+                    
+                    <div class="separator"></div>
+                    
+                    <button class="size-control-btn" id="decreaseSizeBtn" title="Disminuir tamaño">A⁻</button>
+                    <select id="sizeSelect" class="format-select" style="width: 70px;">
+                        <option value="12px">12px</option>
+                        <option value="14px">14px</option>
+                        <option value="16px" selected>16px</option>
+                        <option value="18px">18px</option>
+                        <option value="20px">20px</option>
+                        <option value="24px">24px</option>
+                        <option value="28px">28px</option>
+                        <option value="32px">32px</option>
+                        <option value="36px">36px</option>
+                        <option value="40px">40px</option>
+                    </select>
+                    <button class="size-control-btn" id="increaseSizeBtn" title="Aumentar tamaño">A⁺</button>
+                    
+                    <div class="separator"></div>
+                    
+                    <button class="format-btn" id="boldBtn"><b>B</b></button>
+                    <button class="format-btn" id="italicBtn"><i>I</i></button>
+                    <button class="format-btn" id="underlineBtn"><u>U</u></button>
+                    <button class="format-btn" id="alignLeftBtn"><i class="fas fa-align-left"></i></button>
+                    <button class="format-btn" id="alignCenterBtn"><i class="fas fa-align-center"></i></button>
+                    <button class="format-btn" id="alignRightBtn"><i class="fas fa-align-right"></i></button>
+                </div>
+                <div id="contentEditor" class="content-editor" contenteditable="true">
+                    <h2>¡POMBOALONA 2025!</h2>
+                    <p><strong>📅 14 al 20 de junio</strong></p>
+                    <p>📍 Plaza de las Flores</p>
+                    <p>🌟 Un lugar para la imaginación</p>
+                    <p>🎭 Espectáculos, talleres y mucha diversión para toda la familia.</p>
+                    <p><strong>¡Te esperamos!</strong></p>
+                </div>
+                <p style="font-size: 11px; color: #666; margin-top: 5px;">
+                    <i class="fas fa-info-circle"></i> Selecciona texto y usa A⁺/A⁻ para aumentar/disminuir tamaño
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-image"></i> Logo inferior:</label>
+                <input type="file" id="bottomLogoUpload" accept="image/*" style="display:none">
+                <button class="attach-btn" onclick="document.getElementById('bottomLogoUpload').click()">
+                    <i class="fas fa-upload"></i> Cambiar logo inferior
+                </button>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-paperclip"></i> ADJUNTOS</label>
+                <input type="file" id="fileAttachment" multiple style="display:none">
+                <button class="attach-btn" onclick="document.getElementById('fileAttachment').click()">
+                    <i class="fas fa-plus"></i> Adjuntar archivo o imagen
+                </button>
+                <div id="attachmentList"></div>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-share-alt"></i> REDES SOCIALES</label>
+                <div class="social-input"><i class="fas fa-globe" style="color:#4285F4;"></i><input type="url" id="socialWeb" placeholder="URL sitio web"></div>
+                <div class="social-input"><i class="fab fa-instagram" style="color:#E4405F;"></i><input type="url" id="socialInstagram" placeholder="URL instagram"></div>
+                <div class="social-input"><i class="fab fa-tiktok" style="color:#000000;"></i><input type="url" id="socialTiktok" placeholder="URL tiktok"></div>
+                <div class="social-input"><i class="fab fa-facebook" style="color:#1877F2;"></i><input type="url" id="socialFacebook" placeholder="URL facebook"></div>
+                <div class="social-input"><i class="fab fa-youtube" style="color:#FF0000;"></i><input type="url" id="socialYoutube" placeholder="URL youtube"></div>
+                <div class="social-input"><i class="fab fa-twitter" style="color:#1DA1F2;"></i><input type="url" id="socialTwitter" placeholder="URL twitter"></div>
+            </div>
+
+            <div class="form-group">
+                <label><i class="fas fa-palette"></i> COLOR DE FONDO DEL HEADER</label>
+                <div class="color-row">
+                    <input type="color" id="headerColor" value="#1a1a2e">
+                    <button id="applyHeaderColor"><i class="fas fa-check"></i> Aplicar color</button>
+                </div>
+            </div>
+
+            <div class="recipients-section" id="destinatariosSection">
+                <label><i class="fas fa-users"></i> Lista de destinatarios</label>
+                <input type="file" id="excelUpload" accept=".xlsx,.xls,.csv" style="display:none">
+                <button class="attach-btn" onclick="document.getElementById('excelUpload').click()" style="margin: 8px 0;">
+                    <i class="fas fa-file-excel"></i> Subir Excel con correos
+                </button>
+                <input type="text" id="manualEmails" placeholder="o escribe correos separados por comas" style="width:100%; padding:8px; margin:8px 0; border:1px solid #ddd; border-radius:6px;">
+                <button id="addEmailsBtn" style="width:100%; padding:8px; background:#1a1a2e; color:white; border:none; border-radius:6px;">+ Agregar correos</button>
+                <div id="emailList" class="email-badge">0 correos</div>
+            </div>
+
+            <div class="plantillas-section" id="plantillasSection">
+                <label><i class="fas fa-palette"></i> Plantillas con diseños diferentes</label>
+                <div class="plantillas-grid">
+                    <div class="plantilla-card" data-template="pombo">
+                        <i class="fas fa-tree"></i>
+                        <div class="plantilla-nombre">🎪 POMBOALONA</div>
+                        <div class="plantilla-desc">Evento familiar - Colorido</div>
+                    </div>
+                    <div class="plantilla-card" data-template="corporativa">
+                        <i class="fas fa-building"></i>
+                        <div class="plantilla-nombre">🏢 Corporativa</div>
+                        <div class="plantilla-desc">Formal - Azul marino</div>
+                    </div>
+                    <div class="plantilla-card" data-template="promocional">
+                        <i class="fas fa-tags"></i>
+                        <div class="plantilla-nombre">🔥 Promocional</div>
+                        <div class="plantilla-desc">Ofertas - Destaca</div>
+                    </div>
+                    <div class="plantilla-card" data-template="moderna">
+                        <i class="fas fa-newspaper"></i>
+                        <div class="plantilla-nombre">📰 Moderna</div>
+                        <div class="plantilla-desc">Minimalista - Elegante</div>
+                    </div>
+                    <div class="plantilla-card" data-template="festival">
+                        <i class="fas fa-music"></i>
+                        <div class="plantilla-nombre">🎵 Festival</div>
+                        <div class="plantilla-desc">Música - Vibrante</div>
+                    </div>
+                </div>
+            </div>
+
+            <button class="send-btn" id="sendBtn"><i class="fas fa-paper-plane"></i> Enviar campaña</button>
+            <div id="sendMessage" style="margin-top: 12px; font-size: 12px; text-align: center;"></div>
+        </div>
+
+        <div class="preview-panel">
+            <div class="preview-header-buttons">
+                <button class="device-btn active" data-device="pc"><i class="fas fa-desktop"></i> PC</button>
+                <button class="device-btn" data-device="mobile"><i class="fas fa-mobile-alt"></i> Móvil/Tablet</button>
+            </div>
+
+            <div id="emailPreview" class="email-preview pc">
+                <div class="preview-content">
+                    <div class="preview-logo-top">
+                        <img id="previewTopLogo" src="https://placehold.co/200x60/1a1a2e/f5a623?text=Logo+Superior">
+                    </div>
+                    <div class="preview-subject" id="previewSubject">¡Vacaciones en la Fundación Rafael Pombo!</div>
+                    <div class="preview-body" id="previewBody"></div>
+                    <div class="preview-footer">
+                        <div class="preview-logo-bottom">
+                            <img id="previewBottomLogo" src="https://placehold.co/150x40/1a1a2e/f5a623?text=Logo+Inferior">
+                        </div>
+                        <div class="preview-social" id="previewSocial"></div>
+                        <div class="preview-copyright">© 2025 Tu Empresa. Todos los derechos reservados.</div>
+                        <div id="previewAttachmentList" style="margin-top: 12px; font-size: 11px; color: #666;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="gmail-api.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
