@@ -1,7 +1,11 @@
 // ============================================
-// ELEMENTOS DEL DOM
+// MAILSTUDIO - SCRIPT PRINCIPAL
+// VERSIÓN SIMPLIFICADA Y FUNCIONAL
 // ============================================
 
+// ============================================
+// ELEMENTOS DEL DOM
+// ============================================
 const editor = document.getElementById('contentEditor');
 const subjectInput = document.getElementById('subjectInput');
 const previewSubject = document.getElementById('previewSubject');
@@ -41,255 +45,99 @@ const connectBtn = document.getElementById('connectGmailBtn');
 const disconnectBtn = document.getElementById('disconnectGmailBtn');
 const gmailStatus = document.getElementById('gmailStatus');
 const quotaInfo = document.getElementById('quotaInfo');
-const reanudarBtn = document.getElementById('reanudarBtn');
-const limpiarEstadoBtn = document.getElementById('limpiarEstadoBtn');
-const estadoSection = document.getElementById('estadoSection');
-const estadoInfo = document.getElementById('estadoInfo');
 const progressContainer = document.getElementById('progressContainer');
 const progressFill = document.getElementById('progressFill');
 
 // ============================================
-// CONFIGURACIÓN DE ENVÍO
+// CONFIGURACIÓN
 // ============================================
-const CONFIG_ENVIO = {
-    TAMANO_LOTE: 100,
-    PAUSA_ENTRE_LOTES: 7200,
-    MAX_DESTINATARIOS_DIA: 2000,
-    MAX_DESTINATARIOS_POR_MSG: 100,
-    MAX_TAMANO_MB: 25,
-    TIEMPO_ENTRE_EMAILS: 10000,
+const CONFIG = {
+    MAX_DAILY: 2000,
+    MAX_PER_BATCH: 100,
+    MAX_ATTACHMENTS: 10,
+    MAX_SIZE_MB: 25,
+    DELAY_BETWEEN_EMAILS: 10000,
 };
 
 // ============================================
-// TLDs VÁLIDOS (Dominios de nivel superior)
+// TLDs VÁLIDOS
 // ============================================
 const TLDS_VALIDOS = [
-    'com', 'org', 'net', 'edu', 'gov', 'mil', 'co', 'es', 'mx', 'ar', 'cl', 'pe', 've', 
-    'ec', 'uy', 'py', 'bo', 'cr', 'pa', 'gt', 'hn', 'ni', 'do', 'pr', 'cu', 'sv', 'bz', 
-    'tt', 'jm', 'bb', 'bs', 'gd', 'kn', 'lc', 'vc', 'ag', 'ai', 'aw', 'bm', 'ky', 'dm', 
-    'fk', 'gi', 'ms', 'pn', 'sh', 'tc', 'vg', 'vi', 'io', 'tv', 'me', 'ws', 'info', 'biz',
-    'name', 'mobi', 'asia', 'cat', 'jobs', 'pro', 'tel', 'travel', 'xxx', 'eu', 'asia',
-    'coop', 'aero', 'museum', 'int', 'mil', 'edu', 'gob', 'gob.mx', 'gob.es', 'gob.ar'
+    'com', 'org', 'net', 'edu', 'gov', 'mil', 'co', 'es', 'mx', 'ar', 'cl', 'pe', 've',
+    'ec', 'uy', 'py', 'bo', 'cr', 'pa', 'gt', 'hn', 'ni', 'do', 'pr', 'cu', 'sv', 'bz',
+    'tt', 'jm', 'bb', 'bs', 'gd', 'kn', 'lc', 'vc', 'ag', 'ai', 'aw', 'bm', 'ky', 'dm',
+    'fk', 'gi', 'ms', 'pn', 'sh', 'tc', 'vg', 'vi', 'io', 'tv', 'me', 'ws', 'info', 'biz'
 ];
 
 // ============================================
-// ESTADO DE ENVÍO (PERSISTENTE)
+// ESTADO DE ENVÍO
 // ============================================
 let estadoEnvio = {
     enviadosHoy: 0,
     fechaReset: new Date().toDateString(),
-    progreso: null,
     emailsEnviados: [],
     emailsFallidos: [],
     emailsInvalidos: []
 };
 
 // ============================================
-// FUNCIÓN: LIMPIAR PROGRESO (CORREGIDA)
+// VALIDACIÓN DE EMAIL
 // ============================================
-function limpiarProgreso() {
-    estadoEnvio.progreso = null;
-    guardarEstadoEnvio();
-    actualizarUIEstado();
-    console.log('🧹 Progreso limpiado');
-}
-
-function cargarEstadoEnvio() {
-    try {
-        const guardado = localStorage.getItem('mailstudio_estado_envio');
-        if (guardado) {
-            const data = JSON.parse(guardado);
-            const hoy = new Date().toDateString();
-            if (data.fechaReset === hoy) {
-                estadoEnvio = data;
-            } else {
-                estadoEnvio.enviadosHoy = 0;
-                estadoEnvio.fechaReset = hoy;
-                estadoEnvio.progreso = null;
-                guardarEstadoEnvio();
-            }
-        }
-        actualizarUIEstado();
-    } catch (e) {
-        console.warn('Error cargando estado:', e);
-    }
-}
-
-function guardarEstadoEnvio() {
-    try {
-        localStorage.setItem('mailstudio_estado_envio', JSON.stringify(estadoEnvio));
-    } catch (e) {
-        console.warn('Error guardando estado:', e);
-    }
-}
-
-function actualizarUIEstado() {
-    const hoy = new Date().toDateString();
-    if (hoy !== estadoEnvio.fechaReset) {
-        estadoEnvio.enviadosHoy = 0;
-        estadoEnvio.fechaReset = hoy;
-        guardarEstadoEnvio();
-    }
-
-    const pendiente = estadoEnvio.progreso && estadoEnvio.progreso.pendientes && estadoEnvio.progreso.pendientes.length > 0;
-    
-    if (pendiente || estadoEnvio.enviadosHoy > 0 || estadoEnvio.emailsEnviados.length > 0) {
-        estadoSection.style.display = 'block';
-        let html = `
-            <p><strong>📊 Enviados hoy:</strong> ${estadoEnvio.enviadosHoy} / ${CONFIG_ENVIO.MAX_DESTINATARIOS_DIA}</p>
-            <p><strong>⏳ Restantes hoy:</strong> ${CONFIG_ENVIO.MAX_DESTINATARIOS_DIA - estadoEnvio.enviadosHoy}</p>
-        `;
-        if (pendiente) {
-            html += `
-                <p style="color: #FF9800;"><strong>🔄 Envío pendiente:</strong> ${estadoEnvio.progreso.pendientes.length} correos restantes</p>
-                <p><strong>📌 Progreso:</strong> ${estadoEnvio.progreso.indice || 0} de ${estadoEnvio.progreso.total || 0}</p>
-            `;
-        }
-        if (estadoEnvio.emailsEnviados.length > 0) {
-            html += `<p><strong>✅ Enviados:</strong> ${estadoEnvio.emailsEnviados.length}</p>`;
-        }
-        if (estadoEnvio.emailsFallidos.length > 0) {
-            html += `<p><strong>❌ Fallidos:</strong> ${estadoEnvio.emailsFallidos.length}</p>`;
-        }
-        if (estadoEnvio.emailsInvalidos.length > 0) {
-            html += `<p><strong>🚫 Inválidos:</strong> ${estadoEnvio.emailsInvalidos.length}</p>`;
-        }
-        estadoInfo.innerHTML = html;
-        
-        reanudarBtn.style.display = pendiente ? 'block' : 'none';
-    } else {
-        estadoSection.style.display = 'none';
-    }
-}
-
-function guardarProgreso(indice, total, pendientes) {
-    estadoEnvio.progreso = {
-        indice: indice,
-        total: total,
-        pendientes: pendientes,
-        fecha: new Date().toISOString()
-    };
-    guardarEstadoEnvio();
-    actualizarUIEstado();
-}
-
-function limpiarEstadoCompleto() {
-    if (confirm('¿Estás seguro de limpiar todo el estado de envío? Se perderá el progreso de envíos pendientes.')) {
-        estadoEnvio = {
-            enviadosHoy: 0,
-            fechaReset: new Date().toDateString(),
-            progreso: null,
-            emailsEnviados: [],
-            emailsFallidos: [],
-            emailsInvalidos: []
-        };
-        guardarEstadoEnvio();
-        actualizarUIEstado();
-        showMessage('🗑️ Estado limpiado correctamente', 'info');
-    }
-}
-
-// ============================================
-// VALIDACIÓN DE EMAIL - VERSIÓN MEJORADA
-// ============================================
-function validarEmailExhaustivo(email) {
+function validarEmail(email) {
     if (!email || typeof email !== 'string') {
-        return { valido: false, razon: 'Email vacío o inválido' };
+        return { valido: false, razon: 'Email vacío' };
     }
     
     email = email.trim().toLowerCase();
     
-    // 1. Verificar espacios
-    if (email.includes(' ')) {
-        return { valido: false, razon: 'Contiene espacios' };
+    // Verificaciones básicas
+    if (email.includes(' ')) return { valido: false, razon: 'Contiene espacios' };
+    if (!email.includes('@')) return { valido: false, razon: 'Falta @' };
+    if (!email.includes('.')) return { valido: false, razon: 'Falta punto' };
+    
+    const partes = email.split('@');
+    if (partes.length !== 2) return { valido: false, razon: 'Múltiples @' };
+    
+    const [local, dominio] = partes;
+    
+    // Validar parte local
+    const localNormalizado = local.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!/^[a-zA-Z0-9._-]+$/.test(localNormalizado)) {
+        return { valido: false, razon: 'Caracteres no permitidos' };
     }
-    
-    // 2. Verificar @ y .
-    if (!email.includes('@') || !email.includes('.')) {
-        return { valido: false, razon: 'Formato inválido (falta @ o .)' };
-    }
-    
-    // 3. Verificar múltiples @
-    if (email.split('@').length !== 2) {
-        return { valido: false, razon: 'Múltiples @' };
-    }
-    
-    const [localPart, dominio] = email.split('@');
-    
-    // 4. Verificar parte local (solo caracteres permitidos)
-    const localNormalized = localPart.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (!/^[a-zA-Z0-9._-]+$/.test(localNormalized)) {
-        return { valido: false, razon: 'Caracteres no permitidos (tildes, eñes, etc.)' };
-    }
-    
-    // 5. Verificar puntos seguidos
-    if (localPart.includes('..')) {
-        return { valido: false, razon: 'Puntos seguidos en parte local' };
-    }
-    
-    // 6. Verificar punto al inicio o final
-    if (localPart.startsWith('.') || localPart.endsWith('.')) {
+    if (local.includes('..')) return { valido: false, razon: 'Puntos seguidos' };
+    if (local.startsWith('.') || local.endsWith('.')) {
         return { valido: false, razon: 'Empieza o termina con punto' };
     }
+    if (local.length > 64) return { valido: false, razon: 'Parte local muy larga' };
     
-    // 7. Verificar longitud de parte local
-    if (localPart.length > 64) {
-        return { valido: false, razon: `Parte local muy larga (${localPart.length} > 64)` };
+    // Validar dominio
+    const domNormalizado = dominio.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!/^[a-zA-Z0-9.-]+$/.test(domNormalizado)) {
+        return { valido: false, razon: 'Dominio inválido' };
     }
     
-    // 8. Verificar dominio (solo letras, números, puntos y guiones)
-    const dominioNormalized = dominio.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (!/^[a-zA-Z0-9.-]+$/.test(dominioNormalized)) {
-        return { valido: false, razon: `Dominio inválido: ${dominio}` };
-    }
+    const partesDom = dominio.split('.');
+    if (partesDom.length < 2) return { valido: false, razon: 'Sin extensión' };
     
-    // 9. Verificar que el dominio tenga TLD
-    const partesDominio = dominioNormalized.split('.');
-    if (partesDominio.length < 2) {
-        return { valido: false, razon: `Dominio sin extensión: ${dominio}` };
-    }
-    
-    const tld = partesDominio[partesDominio.length - 1].toLowerCase();
-    
-    // 10. Verificar TLD válido (incluye .es, .com, .org, etc.)
+    const tld = partesDom[partesDom.length - 1].toLowerCase();
     if (!TLDS_VALIDOS.includes(tld)) {
-        return { valido: false, razon: `TLD no válido: .${tld}` };
+        return { valido: false, razon: `TLD .${tld} no válido` };
     }
     
-    // 11. Verificar puntos seguidos en dominio
-    if (dominio.includes('..')) {
-        return { valido: false, razon: 'Puntos seguidos en dominio' };
-    }
-    
-    // 12. Verificar que el dominio no empiece o termine con guion
+    if (dominio.includes('..')) return { valido: false, razon: 'Puntos seguidos en dominio' };
     if (dominio.startsWith('-') || dominio.endsWith('-')) {
-        return { valido: false, razon: 'Dominio empieza o termina con guion' };
-    }
-    
-    // 13. Verificar longitud del dominio
-    if (dominio.length > 255) {
-        return { valido: false, razon: `Dominio demasiado largo (${dominio.length} > 255)` };
-    }
-    
-    // 14. Verificar que la parte local no sea solo números
-    if (/^\d+$/.test(localPart)) {
-        return { valido: false, razon: 'Parte local solo números' };
-    }
-    
-    // 15. Verificar que el dominio tenga al menos una letra
-    if (!/[a-zA-Z]/.test(dominioNormalized)) {
-        return { valido: false, razon: 'Dominio sin letras' };
+        return { valido: false, razon: 'Dominio con guion al inicio/final' };
     }
     
     return { valido: true, razon: 'Email válido' };
 }
 
 // ============================================
-// FUNCIONES DE ACTUALIZACIÓN DE VISTA PREVIA
+// FUNCIONES DE VISTA PREVIA
 // ============================================
-
 function updatePreview() {
-    previewSubject.textContent = subjectInput.value || "Sin asunto";
+    previewSubject.textContent = subjectInput.value || 'Sin asunto';
     previewBody.innerHTML = editor.innerHTML;
 }
 
@@ -301,7 +149,6 @@ function getCurrentFontSize(element) {
 // ============================================
 // FUNCIONES DE FORMATO
 // ============================================
-
 function applyFormat(command) {
     document.execCommand(command, false, null);
     updatePreview();
@@ -321,14 +168,12 @@ function applyFontSize(size) {
         updatePreview();
         return;
     }
-    
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
         editor.style.fontSize = size;
         updatePreview();
         return;
     }
-    
     try {
         document.execCommand('fontSize', false, '7');
         const fontElements = editor.querySelectorAll('font[size="7"]');
@@ -356,14 +201,12 @@ function applyFontFamily(font) {
         updatePreview();
         return;
     }
-    
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
         editor.style.fontFamily = font;
         updatePreview();
         return;
     }
-    
     try {
         document.execCommand('fontName', false, font);
     } catch (e) {
@@ -388,7 +231,6 @@ function increaseFontSize() {
         updatePreview();
         return;
     }
-    
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
         let currentSize = getCurrentFontSize(editor);
@@ -397,13 +239,11 @@ function increaseFontSize() {
         updatePreview();
         return;
     }
-    
     try {
         let container = range.commonAncestorContainer;
         if (container.nodeType === 3) container = container.parentNode;
         let currentSize = container ? (parseInt(window.getComputedStyle(container).fontSize) || 16) : 16;
         let newSize = Math.min(currentSize + 2, 72);
-        
         document.execCommand('fontSize', false, '7');
         const fontElements = editor.querySelectorAll('font[size="7"]');
         fontElements.forEach(el => {
@@ -419,7 +259,6 @@ function increaseFontSize() {
                 currentSize = parseInt(window.getComputedStyle(container).fontSize) || 16;
             }
             let newSize = Math.min(currentSize + 2, 72);
-            
             const span = document.createElement('span');
             span.style.fontSize = newSize + 'px';
             range.surroundContents(span);
@@ -440,7 +279,6 @@ function decreaseFontSize() {
         updatePreview();
         return;
     }
-    
     const range = selection.getRangeAt(0);
     if (range.collapsed) {
         let currentSize = getCurrentFontSize(editor);
@@ -449,13 +287,11 @@ function decreaseFontSize() {
         updatePreview();
         return;
     }
-    
     try {
         let container = range.commonAncestorContainer;
         if (container.nodeType === 3) container = container.parentNode;
         let currentSize = container ? (parseInt(window.getComputedStyle(container).fontSize) || 16) : 16;
         let newSize = Math.max(currentSize - 2, 8);
-        
         document.execCommand('fontSize', false, '7');
         const fontElements = editor.querySelectorAll('font[size="7"]');
         fontElements.forEach(el => {
@@ -471,7 +307,6 @@ function decreaseFontSize() {
                 currentSize = parseInt(window.getComputedStyle(container).fontSize) || 16;
             }
             let newSize = Math.max(currentSize - 2, 8);
-            
             const span = document.createElement('span');
             span.style.fontSize = newSize + 'px';
             range.surroundContents(span);
@@ -486,7 +321,6 @@ function decreaseFontSize() {
 // ============================================
 // REDES SOCIALES
 // ============================================
-
 function updateSocialLinks() {
     const socialUrls = {
         web: document.getElementById('socialWeb')?.value || '',
@@ -520,13 +354,12 @@ function updateSocialLinks() {
             </a>`;
         }
     }
-    previewSocial.innerHTML = html || '<span style="color:#94a3b8; font-size:12px;">Sin redes sociales configuradas</span>';
+    previewSocial.innerHTML = html || '<span style="color:#94a3b8; font-size:12px;">Sin redes sociales</span>';
 }
 
 // ============================================
 // ADJUNTOS
 // ============================================
-
 function updateAttachmentsPreview() {
     const container = document.getElementById('attachmentList');
     if (attachments.length === 0) {
@@ -566,78 +399,35 @@ function removeAttachment(index) {
 }
 
 // ============================================
-// PLANTILLAS
+// FUNCIONES DE CONVERSIÓN
 // ============================================
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = (error) => {
+            reject(error);
+        };
+        reader.readAsDataURL(file);
+    });
+}
 
-const plantillas = {
-    pombo: `<div style="background:linear-gradient(135deg, #facc15, #f59e0b); padding:30px; border-radius:24px; text-align:center; color:white;">
-                <h1 style="font-size:32px; margin:0;">🎪 POMBOALONA 2025</h1>
-                <p style="font-size:18px;">✨ Un lugar para la imaginación ✨</p>
-            </div>
-            <div style="padding:20px; text-align:center;">
-                <p><strong>📅 14 al 20 de junio</strong></p>
-                <p>📍 Plaza de las Flores</p>
-                <p>🎭 Espectáculos, talleres y mucha diversión para toda la familia.</p>
-                <p style="background:#facc15; display:inline-block; padding:10px 20px; border-radius:40px;"><strong>🎟️ ¡Te esperamos!</strong></p>
-            </div>`,
-    
-    corporativa: `<div style="background:#0f172a; padding:25px; border-radius:16px; color:white;">
-                    <h2 style="margin:0;">Comunicado Oficial</h2>
-                    <p style="opacity:0.8;">Fundación Rafael Pombo</p>
-                  </div>
-                  <div style="padding:20px; color:#1e293b;">
-                    <p>Estimados colaboradores,</p>
-                    <p>Nos complace informarles sobre nuestras próximas actividades culturales.</p>
-                    <ul>
-                        <li>📚 Talleres de lectura</li>
-                        <li>🎨 Clases creativas</li>
-                        <li>🎭 Presentaciones artísticas</li>
-                    </ul>
-                    <hr>
-                    <p><strong>Contacto:</strong> info@fundacionpombo.org</p>
-                  </div>`,
-    
-    promocional: `<div style="background:#1a1a2e; color:white; padding:20px; text-align:center;">
-                    <h2>🔥 OFERTA ESPECIAL 🔥</h2>
-                    <p style="font-size:24px;">50% OFF</p>
-                  </div>
-                  <div style="padding:20px; text-align:center;">
-                    <p>Vacaciones creativas para niños</p>
-                    <p style="font-size:32px; color:#f59e0b;"><strong>14 - 20 JUNIO</strong></p>
-                    <button style="background:#22c55e; color:white; border:none; padding:12px 24px; border-radius:40px;">📞 Reserva ahora</button>
-                  </div>`,
-    
-    moderna: `<div style="display:flex; gap:20px; align-items:center; background:#f8fafc; padding:20px; border-radius:24px;">
-                <i class="fas fa-envelope-open-text" style="font-size:48px; color:#facc15;"></i>
-                <div><h2 style="margin:0;">Novedades</h2><p>Mantente informado</p></div>
-              </div>
-              <div style="padding:20px;">
-                <p>🌟 Próximos eventos en la Fundación Rafael Pombo</p>
-                <p>📅 Junio 2025 - Programa completo disponible</p>
-                <p style="background:#e2e8f0; padding:12px; border-radius:12px;">🎯 "Un lugar para la imaginación"</p>
-              </div>`,
-    
-    festival: `<div style="background:radial-gradient(circle, #facc15, #f59e0b); padding:30px; text-align:center;">
-                <i class="fas fa-music" style="font-size:50px; color:white;"></i>
-                <h1 style="color:white;">FESTIVAL POMBO</h1>
-              </div>
-              <div style="padding:20px; text-align:center;">
-                <p><strong>🎵 14 - 20 de junio</strong></p>
-                <p>🎪 Plaza de las Flores</p>
-                <p>🎭 Presentaciones en vivo</p>
-                <p>🍔 Zona de comidas</p>
-                <p style="margin-top:16px;"><strong>¡Entrada libre!</strong></p>
-              </div>`
-};
+function showMessage(text, type) {
+    const msg = document.getElementById('sendMessage');
+    msg.textContent = text;
+    msg.className = type;
+    msg.style.display = text ? 'block' : 'none';
+}
 
 // ============================================
 // NAVEGACIÓN ENTRE PESTAÑAS
 // ============================================
-
 const navItems = document.querySelectorAll('.nav-item');
 const destinatariosSection = document.getElementById('destinatariosSection');
 const plantillasSection = document.getElementById('plantillasSection');
-const estadoSectionNav = document.getElementById('estadoSection');
 
 navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -646,20 +436,14 @@ navItems.forEach(item => {
         const tab = item.getAttribute('data-tab');
         destinatariosSection.style.display = 'none';
         plantillasSection.style.display = 'none';
-        estadoSectionNav.style.display = 'none';
         if (tab === 'destinatarios') destinatariosSection.style.display = 'block';
         else if (tab === 'plantillas') plantillasSection.style.display = 'block';
-        else if (tab === 'estado') {
-            estadoSectionNav.style.display = 'block';
-            actualizarUIEstado();
-        }
     });
 });
 
 // ============================================
-// EVENT LISTENERS BASE
+// EVENT LISTENERS
 // ============================================
-
 boldBtn.addEventListener('click', () => applyFormat('bold'));
 italicBtn.addEventListener('click', () => applyFormat('italic'));
 underlineBtn.addEventListener('click', () => applyFormat('underline'));
@@ -674,24 +458,24 @@ editor.addEventListener('input', updatePreview);
 editor.addEventListener('keyup', updatePreview);
 subjectInput.addEventListener('input', updatePreview);
 
-applyHeaderColor.addEventListener('click', () => { 
-    mainHeader.style.backgroundColor = headerColor.value; 
+applyHeaderColor.addEventListener('click', () => {
+    mainHeader.style.backgroundColor = headerColor.value;
 });
 
-topLogoUpload.addEventListener('change', (e) => { 
-    if(e.target.files[0]) { 
-        const r = new FileReader(); 
-        r.onload = (ev) => previewTopLogo.src = ev.target.result; 
-        r.readAsDataURL(e.target.files[0]); 
-    } 
+topLogoUpload.addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+        const r = new FileReader();
+        r.onload = (ev) => previewTopLogo.src = ev.target.result;
+        r.readAsDataURL(e.target.files[0]);
+    }
 });
 
-bottomLogoUpload.addEventListener('change', (e) => { 
-    if(e.target.files[0]) { 
-        const r = new FileReader(); 
-        r.onload = (ev) => previewBottomLogo.src = ev.target.result; 
-        r.readAsDataURL(e.target.files[0]); 
-    } 
+bottomLogoUpload.addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+        const r = new FileReader();
+        r.onload = (ev) => previewBottomLogo.src = ev.target.result;
+        r.readAsDataURL(e.target.files[0]);
+    }
 });
 
 // ============================================
@@ -722,11 +506,11 @@ fileAttachment.addEventListener('change', (e) => {
 });
 
 // ============================================
-// EXCEL Y DESTINATARIOS (MEJORADO)
+// EXCEL - CARGAR DESTINATARIOS
 // ============================================
 excelUpload.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if(!file) return;
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
         try {
@@ -735,29 +519,28 @@ excelUpload.addEventListener('change', (e) => {
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet);
             
-            // 🔧 IDENTIFICAR COLUMNA DE EMAIL
+            // Buscar columna de email
             let emailColumn = null;
             if (rows.length > 0) {
                 const headers = Object.keys(rows[0]);
                 for (const header of headers) {
-                    const headerLower = header.toLowerCase();
-                    if (headerLower.includes('email') || headerLower.includes('correo') || headerLower.includes('mail')) {
+                    const h = header.toLowerCase();
+                    if (h.includes('email') || h.includes('correo') || h.includes('mail')) {
                         emailColumn = header;
                         break;
                     }
                 }
-                // Si no se encuentra, usar la primera columna
                 if (!emailColumn && headers.length > 0) {
                     emailColumn = headers[0];
                 }
             }
             
             if (!emailColumn) {
-                alert('❌ No se encontró una columna de email en el archivo.');
+                alert('❌ No se encontró columna de email.');
                 return;
             }
             
-            // Extraer emails de la columna identificada
+            // Extraer emails
             const emailsRaw = [];
             for (const row of rows) {
                 const email = row[emailColumn];
@@ -770,7 +553,7 @@ excelUpload.addEventListener('change', (e) => {
             }
             
             if (emailsRaw.length === 0) {
-                alert('❌ No se encontraron correos en el archivo.');
+                alert('❌ No se encontraron correos.');
                 return;
             }
             
@@ -779,9 +562,9 @@ excelUpload.addEventListener('change', (e) => {
             const emailsUnicos = [];
             let duplicados = 0;
             for (const email of emailsRaw) {
-                const emailClean = email.toLowerCase().trim();
-                if (!vistos.has(emailClean)) {
-                    vistos.add(emailClean);
+                const clean = email.toLowerCase().trim();
+                if (!vistos.has(clean)) {
+                    vistos.add(clean);
                     emailsUnicos.push(email);
                 } else {
                     duplicados++;
@@ -792,7 +575,7 @@ excelUpload.addEventListener('change', (e) => {
             const validos = [];
             const invalidos = [];
             for (const email of emailsUnicos) {
-                const resultado = validarEmailExhaustivo(email);
+                const resultado = validarEmail(email);
                 if (resultado.valido) {
                     validos.push(email);
                 } else {
@@ -800,54 +583,34 @@ excelUpload.addEventListener('change', (e) => {
                 }
             }
             
-            // Mostrar resultados
+            // Guardar
+            currentRecipients = validos;
+            emailList.textContent = `${validos.length} correos válidos (${invalidos.length} inválidos)`;
+            
+            // Mostrar resumen
             let mensaje = `📊 RESULTADO DE VALIDACIÓN\n\n`;
-            mensaje += `📧 Total original: ${emailsRaw.length}\n`;
-            mensaje += `📋 Columna usada: ${emailColumn}\n`;
-            if (duplicados > 0) mensaje += `🔄 Duplicados eliminados: ${duplicados}\n`;
+            mensaje += `📧 Total: ${emailsRaw.length}\n`;
+            if (duplicados > 0) mensaje += `🔄 Duplicados: ${duplicados}\n`;
             mensaje += `✅ Válidos: ${validos.length}\n`;
             mensaje += `❌ Inválidos: ${invalidos.length}\n\n`;
             
             if (invalidos.length > 0) {
                 mensaje += `📋 INVÁLIDOS:\n`;
-                for (const inv of invalidos.slice(0, 10)) {
+                for (const inv of invalidos.slice(0, 5)) {
                     mensaje += `   ❌ ${inv.email}: ${inv.razon}\n`;
                 }
-                if (invalidos.length > 10) mensaje += `   ... y ${invalidos.length - 10} más\n`;
+                if (invalidos.length > 5) mensaje += `   ... y ${invalidos.length - 5} más\n`;
             }
             
             if (validos.length > 0) {
                 mensaje += `\n✅ VÁLIDOS:\n`;
-                for (const email of validos.slice(0, 5)) {
+                for (const email of validos.slice(0, 3)) {
                     mensaje += `   ✓ ${email}\n`;
                 }
-                if (validos.length > 5) mensaje += `   ... y ${validos.length - 5} más\n`;
+                if (validos.length > 3) mensaje += `   ... y ${validos.length - 3} más\n`;
             }
             
-            // Guardar en variable global y actualizar UI
-            currentRecipients = validos;
-            estadoEnvio.emailsInvalidos = invalidos;
-            guardarEstadoEnvio();
-            
-            emailList.textContent = `${validos.length} correos válidos (${invalidos.length} inválidos)`;
-            
-            // Mostrar resumen
-            if (invalidos.length > 0 && validos.length === 0) {
-                alert(mensaje + '\n\n❌ No hay correos válidos para enviar.');
-            } else {
-                alert(mensaje);
-            }
-            
-            // Actualizar info de límites
-            const estado = gmailSender.getStats();
-            if (document.getElementById('quotaInfo')) {
-                document.getElementById('quotaInfo').innerHTML = `
-                    <i class="fas fa-chart-line"></i> 
-                    Destinatarios: ${validos.length} | 
-                    Enviados hoy: ${estado.sentToday} / ${estado.maxDaily} |
-                    Disponibles: ${estado.remaining}
-                `;
-            }
+            alert(mensaje);
             
         } catch (error) {
             alert('❌ Error al procesar el archivo:\n' + error.message);
@@ -859,35 +622,28 @@ excelUpload.addEventListener('change', (e) => {
 
 addEmailsBtn.addEventListener('click', () => {
     const raw = manualEmails.value;
-    if(raw.trim()) {
+    if (raw.trim()) {
         const emails = raw.split(/[ ,;\n\r]+/).filter(e => e && e.trim() && e.includes('@'));
         if (emails.length > 0) {
-            // Validar y agregar
             const validos = [];
             const invalidos = [];
             for (const email of emails) {
-                const resultado = validarEmailExhaustivo(email);
+                const resultado = validarEmail(email);
                 if (resultado.valido) {
                     validos.push(email);
                 } else {
                     invalidos.push({ email: email, razon: resultado.razon });
                 }
             }
-            
-            // Agregar solo los válidos
             currentRecipients = [...new Set([...currentRecipients, ...validos])];
-            estadoEnvio.emailsInvalidos = [...estadoEnvio.emailsInvalidos, ...invalidos];
-            guardarEstadoEnvio();
-            
             emailList.textContent = `${currentRecipients.length} correos válidos (${invalidos.length} inválidos)`;
             manualEmails.value = '';
-            
             if (invalidos.length > 0) {
-                let msg = `⚠️ ${invalidos.length} correos inválidos omitidos:\n`;
-                for (const inv of invalidos.slice(0, 5)) {
+                let msg = `⚠️ ${invalidos.length} correos inválidos:\n`;
+                for (const inv of invalidos.slice(0, 3)) {
                     msg += `   ❌ ${inv.email}: ${inv.razon}\n`;
                 }
-                if (invalidos.length > 5) msg += `   ... y ${invalidos.length - 5} más`;
+                if (invalidos.length > 3) msg += `   ... y ${invalidos.length - 3} más`;
                 alert(msg);
             }
         }
@@ -895,474 +651,60 @@ addEmailsBtn.addEventListener('click', () => {
 });
 
 // ============================================
-// VERIFICAR LÍMITES DE ENVÍO
-// ============================================
-function verificarLimites(cantidadDestinatarios, tamanoBytes) {
-    cargarEstadoEnvio();
-    const hoy = new Date().toDateString();
-    
-    if (hoy !== estadoEnvio.fechaReset) {
-        estadoEnvio.enviadosHoy = 0;
-        estadoEnvio.fechaReset = hoy;
-        guardarEstadoEnvio();
-    }
-    
-    const errores = [];
-    
-    if (tamanoBytes > CONFIG_ENVIO.MAX_TAMANO_MB * 1024 * 1024) {
-        errores.push(`El mensaje supera el límite de ${CONFIG_ENVIO.MAX_TAMANO_MB}MB`);
-    }
-    
-    if (cantidadDestinatarios > CONFIG_ENVIO.MAX_DESTINATARIOS_POR_MSG) {
-        errores.push(`Máximo ${CONFIG_ENVIO.MAX_DESTINATARIOS_POR_MSG} destinatarios por mensaje`);
-    }
-    
-    if (estadoEnvio.enviadosHoy + cantidadDestinatarios > CONFIG_ENVIO.MAX_DESTINATARIOS_DIA) {
-        const restante = CONFIG_ENVIO.MAX_DESTINATARIOS_DIA - estadoEnvio.enviadosHoy;
-        errores.push(`Límite diario: solo quedan ${restante} créditos hoy`);
-    }
-    
-    return {
-        permitido: errores.length === 0,
-        errores: errores,
-        restante: CONFIG_ENVIO.MAX_DESTINATARIOS_DIA - estadoEnvio.enviadosHoy,
-        enviadosHoy: estadoEnvio.enviadosHoy
-    };
-}
-
-// ============================================
-// ENVIAR LOTE INDIVIDUAL
-// ============================================
-async function enviarLoteIndividual(loteEmails, asunto, htmlContent, attachmentsBase64, progresoCallback) {
-    let enviados = 0;
-    let fallidos = 0;
-    const emailsEnviados = [];
-    
-    for (let i = 0; i < loteEmails.length; i++) {
-        const email = loteEmails[i];
-        
-        // Verificar límite diario
-        const limite = verificarLimites(1, 0);
-        if (!limite.permitido) {
-            progresoCallback(`🛑 Envío detenido: ${limite.errores[0]}`);
-            break;
-        }
-        
-        try {
-            const result = await gmailSender.sendEmail(
-                email,
-                asunto,
-                htmlContent,
-                attachmentsBase64 || []
-            );
-            
-            enviados++;
-            estadoEnvio.enviadosHoy++;
-            estadoEnvio.emailsEnviados.push(email);
-            guardarEstadoEnvio();
-            actualizarUIEstado();
-            
-            progresoCallback(`✅ [${i + 1}/${loteEmails.length}] Enviado a: ${email}`);
-            
-        } catch (error) {
-            fallidos++;
-            estadoEnvio.emailsFallidos.push(email);
-            guardarEstadoEnvio();
-            progresoCallback(`❌ [${i + 1}/${loteEmails.length}] Error a ${email}: ${error.message}`);
-        }
-        
-        // Esperar entre emails (8-15 segundos)
-        if (i < loteEmails.length - 1) {
-            const espera = 8000 + Math.random() * 7000;
-            progresoCallback(`⏳ Esperando ${(espera/1000).toFixed(1)} segundos...`);
-            await new Promise(resolve => setTimeout(resolve, espera));
-        }
-    }
-    
-    return { enviados, fallidos, emailsEnviados };
-}
-
-// ============================================
-// PROCESAR ENVÍOS POR LOTES
-// ============================================
-async function procesarEnviosPorLotes(listaEmails, asunto, htmlContent, attachmentsBase64, progresoCallback) {
-    const TAMANO_LOTE = 100;
-    const PAUSA_LOTE = 2 * 60 * 60 * 1000; // 2 horas en milisegundos
-    
-    const lotes = [];
-    for (let i = 0; i < listaEmails.length; i += TAMANO_LOTE) {
-        lotes.push(listaEmails.slice(i, i + TAMANO_LOTE));
-    }
-    
-    const totalLotes = lotes.length;
-    let totalEnviados = 0;
-    let totalFallidos = 0;
-    const todosEnviados = [];
-    
-    progresoCallback(`📋 Se identificaron ${listaEmails.length} correos.`);
-    progresoCallback(`📦 Divididos en ${totalLotes} lotes de ${TAMANO_LOTE} emails.`);
-    
-    for (let i = 0; i < lotes.length; i++) {
-        const lote = lotes[i];
-        const numLote = i + 1;
-        
-        progresoCallback(`\n🚀 INICIANDO LOTE ${numLote}/${totalLotes}`);
-        progresoCallback(`📧 Emails en este lote: ${lote.length}`);
-        
-        // Verificar límite diario
-        const limite = verificarLimites(lote.length, 0);
-        if (!limite.permitido) {
-            progresoCallback(`🛑 No hay cupo: ${limite.errores[0]}`);
-            const pendientes = [];
-            for (let j = i; j < lotes.length; j++) {
-                pendientes.push(...lotes[j]);
-            }
-            guardarProgreso(totalEnviados, listaEmails.length, pendientes);
-            break;
-        }
-        
-        const resultado = await enviarLoteIndividual(
-            lote,
-            asunto,
-            htmlContent,
-            attachmentsBase64,
-            progresoCallback
-        );
-        
-        totalEnviados += resultado.enviados;
-        totalFallidos += resultado.fallidos;
-        todosEnviados.push(...resultado.emailsEnviados);
-        
-        progresoCallback(`✅ LOTE ${numLote} COMPLETADO`);
-        progresoCallback(`   Enviados: ${resultado.enviados} | Fallidos: ${resultado.fallidos}`);
-        progresoCallback(`   Progreso: ${totalEnviados}/${listaEmails.length}`);
-        
-        // Pausa entre lotes (excepto el último)
-        if (i < lotes.length - 1) {
-            const minutos = PAUSA_LOTE / 60000;
-            progresoCallback(`\n⏳ ESPERANDO ${minutos} MINUTOS...`);
-            progresoCallback(`💡 El envío se reanudará automáticamente después de 2 horas.`);
-            progresoCallback(`📌 Puedes cerrar esta ventana y volver a abrir para reanudar manualmente.`);
-            
-            // Guardar progreso para reanudar después
-            const pendientes = [];
-            for (let j = i + 1; j < lotes.length; j++) {
-                pendientes.push(...lotes[j]);
-            }
-            guardarProgreso(totalEnviados, listaEmails.length, pendientes);
-            
-            // Mostrar mensaje de espera
-            progresoCallback(`⏳ Envío en pausa. Continuará en 2 horas.`);
-            progresoCallback(`📊 Progreso guardado: ${totalEnviados}/${listaEmails.length}`);
-            
-            // En el navegador, no podemos esperar 2 horas sin bloquear
-            // Guardamos y mostramos mensaje
-            break;
-        }
-    }
-    
-    if (totalEnviados >= listaEmails.length || totalLotes === 0) {
-        if (typeof limpiarProgreso === 'function') {
-            limpiarProgreso();
-        } else {
-            console.warn('⚠️ limpiarProgreso no está definida');
-            estadoEnvio.progreso = null;
-            guardarEstadoEnvio();
-            actualizarUIEstado();
-        }
-    }
-    
-    return { totalEnviados, totalFallidos, todosEnviados };
-}
-
-// ============================================
-// REANUDAR ENVÍO PENDIENTE
-// ============================================
-function reanudarEnvioPendiente() {
-    cargarEstadoEnvio();
-    
-    if (!estadoEnvio.progreso || !estadoEnvio.progreso.pendientes || estadoEnvio.progreso.pendientes.length === 0) {
-        showMessage('ℹ️ No hay envíos pendientes para reanudar', 'info');
-        return;
-    }
-    
-    const pendientes = estadoEnvio.progreso.pendientes;
-    const total = estadoEnvio.progreso.total || pendientes.length;
-    const indice = estadoEnvio.progreso.indice || 0;
-    const limite = verificarLimites(0, 0);
-    
-    if (limite.restante <= 0) {
-        showMessage(`❌ No hay cupo disponible hoy. Espera a que se reinicie el contador.`, 'error');
-        return;
-    }
-    
-    const mensaje = `📊 ENVÍO PENDIENTE ENCONTRADO\n\n` +
-        `📌 Progreso: ${indice} de ${total} enviados\n` +
-        `📧 Pendientes: ${pendientes.length} correos\n` +
-        `📊 Disponibles hoy: ${limite.restante}\n` +
-        `⏳ Se enviarán en lotes de 100\n\n` +
-        `¿Deseas reanudar el envío?`;
-    
-    if (confirm(mensaje)) {
-        currentRecipients = pendientes;
-        sendWithGmail();
-    }
-}
-
-// ============================================
-// FUNCIÓN: Convertir archivo a Base64
-// ============================================
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64 = reader.result.split(',')[1];
-            resolve(base64);
-        };
-        reader.onerror = (error) => {
-            reject(error);
-        };
-        reader.readAsDataURL(file);
-    });
-}
-
-// ============================================
-// INTEGRACIÓN CON GMAIL API
-// ============================================
-
-async function initGmailAPI() {
-    try {
-        await gmailSender.initialize();
-        console.log('✅ Gmail API lista');
-    } catch (error) {
-        console.error('Error inicializando Gmail API:', error);
-        gmailStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de configuración';
-    }
-}
-
-window.addEventListener('gmail-connected', async (event) => {
-    const { user, token } = event.detail;
-    
-    connectBtn.style.display = 'none';
-    disconnectBtn.style.display = 'inline-block';
-    gmailStatus.innerHTML = `<i class="fas fa-check-circle" style="color: #22c55e;"></i> Conectado: ${user.email}`;
-    
-    const stats = gmailSender.getStats();
-    quotaInfo.innerHTML = `
-        <i class="fas fa-chart-line"></i> 
-        Cuenta: ${user.email} | 
-        Enviados hoy: <strong>${stats.sentToday}</strong> / ${stats.maxDaily}
-        <span style="margin-left: 10px; color: ${stats.remaining < 50 ? '#dc2626' : '#22c55e'};">
-            ${stats.remaining > 0 ? `✅ ${stats.remaining} restantes` : '⚠️ Límite alcanzado'}
-        </span>
-        <br><small>⏳ Los límites se reinician cada día</small>
-    `;
-    
-    localStorage.setItem('gmail_connected', 'true');
-    localStorage.setItem('gmail_user', user.email);
-    cargarEstadoEnvio();
-});
-
-window.addEventListener('gmail-disconnected', () => {
-    connectBtn.style.display = 'inline-block';
-    disconnectBtn.style.display = 'none';
-    gmailStatus.innerHTML = '<i class="fas fa-circle-exclamation"></i> No conectado';
-    quotaInfo.innerHTML = '';
-    localStorage.removeItem('gmail_connected');
-    localStorage.removeItem('gmail_user');
-});
-
-connectBtn.addEventListener('click', () => {
-    if (gmailSender.tokenClient) {
-        gmailSender.tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-        alert('Inicializando Gmail API, espera un momento...');
-        setTimeout(() => connectBtn.click(), 1000);
-    }
-});
-
-disconnectBtn.addEventListener('click', () => {
-    if (confirm('¿Desconectar tu cuenta de Gmail? Ya no podrás enviar correos.')) {
-        gmailSender.disconnect();
-    }
-});
-
-// ============================================
-// FUNCIÓN: Mostrar mensajes
-// ============================================
-function showMessage(text, type) {
-    const msg = document.getElementById('sendMessage');
-    msg.textContent = text;
-    msg.className = type;
-    msg.style.display = text ? 'block' : 'none';
-}
-
-// ============================================
-// ENVÍO CON GMAIL - VERSIÓN MEJORADA CON LOTES
-// ============================================
-async function sendWithGmail() {
-    if (!gmailSender.accessToken) {
-        showMessage('❌ Primero conecta tu cuenta de Gmail', 'error');
-        return;
-    }
-    
-    if (currentRecipients.length === 0) {
-        showMessage('❌ No hay destinatarios. Agrega correos en la pestaña "Destinatarios"', 'error');
-        return;
-    }
-
-    // Verificar límites
-    const limite = verificarLimites(currentRecipients.length, 0);
-    if (!limite.permitido) {
-        showMessage(`❌ ${limite.errores[0]}`, 'error');
-        return;
-    }
-
-    // Verificar que no exceda el límite diario
-    if (currentRecipients.length > limite.restante) {
-        if (!confirm(`⚠️ Solo te quedan ${limite.restante} correos para hoy.\n` +
-            `Estás intentando enviar ${currentRecipients.length}.\n` +
-            `¿Quieres enviar solo los primeros ${limite.restante}?`)) {
-            return;
-        }
-        currentRecipients = currentRecipients.slice(0, limite.restante);
-    }
-    
-    // Calcular tiempo estimado
-    const total = currentRecipients.length;
-    const lotes = Math.ceil(total / 100);
-    const tiempoMinutos = total * 10 / 60;
-    const pausas = (lotes - 1) * 120; // 2 horas por pausa
-    const tiempoTotalHoras = (tiempoMinutos + pausas) / 60;
-    
-    if (!confirm(`📊 RESUMEN DE ENVÍO POR LOTES\n\n` +
-        `📌 Destinatarios: ${total}\n` +
-        `📦 Lotes: ${lotes} de 100 emails\n` +
-        `⏱️ Tiempo estimado: ~${tiempoTotalHoras.toFixed(1)} horas\n` +
-        `⏳ Pausa de 2 horas entre lotes\n` +
-        `📧 Disponibles hoy: ${limite.restante}\n` +
-        `📎 Adjuntos: ${attachments.length}\n\n` +
-        `⚠️ ¿Estás seguro de enviar estos correos?`)) {
-        return;
-    }
-
-    // Preparar UI
-    const originalText = sendBtn.innerHTML;
-    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando archivos...';
-    sendBtn.disabled = true;
-    progressContainer.style.display = 'block';
-    progressFill.style.width = '0%';
-    showMessage('', '');
-
-    try {
-        // Procesar adjuntos
-        const attachmentsBase64 = [];
-        let processed = 0;
-        for (const file of attachments) {
-            sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Procesando ${processed + 1}/${attachments.length}: ${file.name}`;
-            const base64 = await fileToBase64(file);
-            attachmentsBase64.push({
-                name: file.name,
-                type: file.type || 'application/octet-stream',
-                size: file.size,
-                base64: base64
-            });
-            processed++;
-        }
-
-        // Construir HTML final (con redes sociales)
-        const redesHtml = previewSocial.innerHTML;
-        const finalHtml = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
-                    ${previewTopLogo.src && !previewTopLogo.src.includes('placehold') ? 
-                        `<img src="${previewTopLogo.src}" style="max-height: 80px; width: auto;">` : ''}
-                </div>
-                <div style="padding: 0 10px;">
-                    <h2 style="color: #1a1a2e;">${subjectInput.value || 'Sin asunto'}</h2>
-                    <div style="line-height: 1.8; color: #1e293b; margin-top: 16px;">
-                        ${previewBody.innerHTML}
-                    </div>
-                </div>
-                <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
-                    ${previewBottomLogo.src && !previewBottomLogo.src.includes('placehold') ? 
-                        `<img src="${previewBottomLogo.src}" style="max-height: 50px; width: auto; margin-bottom: 15px;"><br>` : ''}
-                    <div style="margin: 15px 0; font-size: 20px;">
-                        ${redesHtml}
-                    </div>
-                    <p>© ${new Date().getFullYear()} - Enviado desde MailStudio</p>
-                </div>
-            </div>
-        `;
-
-        // Procesar envíos por lotes
-        sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Enviando correos...`;
-        
-        const resultados = await procesarEnviosPorLotes(
-            currentRecipients,
-            subjectInput.value || 'Sin asunto',
-            finalHtml,
-            attachmentsBase64,
-            (mensaje) => {
-                // Actualizar UI con el progreso
-                if (mensaje.includes('LOTE') && mensaje.includes('/')) {
-                    const match = mensaje.match(/LOTE (\d+)\/(\d+)/);
-                    if (match) {
-                        const actual = parseInt(match[1]);
-                        const totalLotes = parseInt(match[2]);
-                        const porcentaje = (actual / totalLotes) * 100;
-                        progressFill.style.width = Math.min(porcentaje, 100) + '%';
-                    }
-                }
-                // Mostrar en la consola
-                console.log(mensaje);
-                // Actualizar botón
-                const shortMsg = mensaje.length > 50 ? mensaje.substring(0, 50) + '...' : mensaje;
-                sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${shortMsg}`;
-            }
-        );
-        
-        // Mostrar resumen final
-        const stats = gmailSender.getStats();
-        let mensajeFinal = `✅ ¡Campaña enviada!\n\n`;
-        mensajeFinal += `📊 ENVIADOS: ${resultados.totalEnviados}\n`;
-        mensajeFinal += `❌ FALLIDOS: ${resultados.totalFallidos}\n`;
-        mensajeFinal += `📧 Total hoy: ${stats.sentToday} / ${stats.maxDaily}\n`;
-        
-        if (estadoEnvio.progreso && estadoEnvio.progreso.pendientes && estadoEnvio.progreso.pendientes.length > 0) {
-            mensajeFinal += `\n⏳ Envío en pausa. Pendientes: ${estadoEnvio.progreso.pendientes.length} correos.\n`;
-            mensajeFinal += `💡 Ve a la pestaña "Estado" para reanudar cuando quieras.`;
-        }
-        
-        showMessage(mensajeFinal, 'success');
-        actualizarUIEstado();
-        
-    } catch (error) {
-        console.error('Error:', error);
-        showMessage(`❌ Error: ${error.message}`, 'error');
-    } finally {
-        sendBtn.innerHTML = originalText;
-        sendBtn.disabled = false;
-        setTimeout(() => {
-            if (progressContainer.style.display !== 'none') {
-                progressContainer.style.display = 'none';
-                progressFill.style.width = '0%';
-            }
-        }, 5000);
-    }
-}
-
-// ============================================
-// EVENTOS DE BOTONES
-// ============================================
-sendBtn.onclick = sendWithGmail;
-
-reanudarBtn?.addEventListener('click', reanudarEnvioPendiente);
-limpiarEstadoBtn?.addEventListener('click', limpiarEstadoCompleto);
-
-// ============================================
 // PLANTILLAS
 // ============================================
+const plantillas = {
+    pombo: `<div style="background:linear-gradient(135deg, #facc15, #f59e0b); padding:30px; border-radius:24px; text-align:center; color:white;">
+                <h1 style="font-size:32px; margin:0;">🎪 POMBOALONA 2025</h1>
+                <p style="font-size:18px;">✨ Un lugar para la imaginación ✨</p>
+            </div>
+            <div style="padding:20px; text-align:center;">
+                <p><strong>📅 14 al 20 de junio</strong></p>
+                <p>📍 Plaza de las Flores</p>
+                <p>🎭 Espectáculos, talleres y mucha diversión para toda la familia.</p>
+                <p style="background:#facc15; display:inline-block; padding:10px 20px; border-radius:40px;"><strong>🎟️ ¡Te esperamos!</strong></p>
+            </div>`,
+    corporativa: `<div style="background:#0f172a; padding:25px; border-radius:16px; color:white;">
+                    <h2 style="margin:0;">Comunicado Oficial</h2>
+                    <p style="opacity:0.8;">Fundación Rafael Pombo</p>
+                  </div>
+                  <div style="padding:20px; color:#1e293b;">
+                    <p>Estimados colaboradores,</p>
+                    <p>Nos complace informarles sobre nuestras próximas actividades culturales.</p>
+                    <ul><li>📚 Talleres de lectura</li><li>🎨 Clases creativas</li><li>🎭 Presentaciones artísticas</li></ul>
+                    <hr><p><strong>Contacto:</strong> info@fundacionpombo.org</p>
+                  </div>`,
+    promocional: `<div style="background:#1a1a2e; color:white; padding:20px; text-align:center;">
+                    <h2>🔥 OFERTA ESPECIAL 🔥</h2>
+                    <p style="font-size:24px;">50% OFF</p>
+                  </div>
+                  <div style="padding:20px; text-align:center;">
+                    <p>Vacaciones creativas para niños</p>
+                    <p style="font-size:32px; color:#f59e0b;"><strong>14 - 20 JUNIO</strong></p>
+                    <button style="background:#22c55e; color:white; border:none; padding:12px 24px; border-radius:40px;">📞 Reserva ahora</button>
+                  </div>`,
+    moderna: `<div style="display:flex; gap:20px; align-items:center; background:#f8fafc; padding:20px; border-radius:24px;">
+                <i class="fas fa-envelope-open-text" style="font-size:48px; color:#facc15;"></i>
+                <div><h2 style="margin:0;">Novedades</h2><p>Mantente informado</p></div>
+              </div>
+              <div style="padding:20px;">
+                <p>🌟 Próximos eventos en la Fundación Rafael Pombo</p>
+                <p>📅 Junio 2025 - Programa completo disponible</p>
+                <p style="background:#e2e8f0; padding:12px; border-radius:12px;">🎯 "Un lugar para la imaginación"</p>
+              </div>`,
+    festival: `<div style="background:radial-gradient(circle, #facc15, #f59e0b); padding:30px; text-align:center;">
+                <i class="fas fa-music" style="font-size:50px; color:white;"></i>
+                <h1 style="color:white;">FESTIVAL POMBO</h1>
+              </div>
+              <div style="padding:20px; text-align:center;">
+                <p><strong>🎵 14 - 20 de junio</strong></p>
+                <p>🎪 Plaza de las Flores</p>
+                <p>🎭 Presentaciones en vivo</p>
+                <p>🍔 Zona de comidas</p>
+                <p style="margin-top:16px;"><strong>¡Entrada libre!</strong></p>
+              </div>`
+};
+
 document.querySelectorAll('.plantilla-card').forEach(card => {
     card.addEventListener('click', () => {
         const template = card.getAttribute('data-template');
@@ -1388,21 +730,207 @@ deviceBtns.forEach(btn => {
 });
 
 // ============================================
-// REDES SOCIALES
+// REDES SOCIALES - EVENTOS
 // ============================================
 document.querySelectorAll('#socialWeb, #socialInstagram, #socialFacebook, #socialTiktok, #socialYoutube, #socialTwitter').forEach(input => {
     if (input) input.addEventListener('input', updateSocialLinks);
 });
 
 // ============================================
+// GMAIL API - CONEXIÓN
+// ============================================
+async function initGmailAPI() {
+    try {
+        await gmailSender.initialize();
+        console.log('✅ Gmail API lista');
+    } catch (error) {
+        console.error('Error inicializando Gmail API:', error);
+        gmailStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de configuración';
+    }
+}
+
+window.addEventListener('gmail-connected', async (event) => {
+    const { user } = event.detail;
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = 'inline-block';
+    gmailStatus.innerHTML = `<i class="fas fa-check-circle" style="color: #22c55e;"></i> Conectado: ${user.email}`;
+    const stats = gmailSender.getStats();
+    quotaInfo.innerHTML = `
+        <i class="fas fa-chart-line"></i> 
+        Cuenta: ${user.email} | 
+        Enviados hoy: <strong>${stats.sentToday}</strong> / ${stats.maxDaily} |
+        Disponibles: ${stats.remaining}
+    `;
+    localStorage.setItem('gmail_connected', 'true');
+    localStorage.setItem('gmail_user', user.email);
+});
+
+window.addEventListener('gmail-disconnected', () => {
+    connectBtn.style.display = 'inline-block';
+    disconnectBtn.style.display = 'none';
+    gmailStatus.innerHTML = '<i class="fas fa-circle-exclamation"></i> No conectado';
+    quotaInfo.innerHTML = '';
+    localStorage.removeItem('gmail_connected');
+    localStorage.removeItem('gmail_user');
+});
+
+connectBtn.addEventListener('click', () => {
+    if (gmailSender.tokenClient) {
+        gmailSender.tokenClient.requestAccessToken({ prompt: 'consent' });
+    } else {
+        alert('Inicializando Gmail API, espera un momento...');
+        setTimeout(() => connectBtn.click(), 1000);
+    }
+});
+
+disconnectBtn.addEventListener('click', () => {
+    if (confirm('¿Desconectar tu cuenta de Gmail?')) {
+        gmailSender.disconnect();
+    }
+});
+
+// ============================================
+// ENVÍO DE CORREOS (SIMPLIFICADO)
+// ============================================
+async function sendWithGmail() {
+    if (!gmailSender.accessToken) {
+        showMessage('❌ Conecta tu cuenta de Gmail primero', 'error');
+        return;
+    }
+
+    if (currentRecipients.length === 0) {
+        showMessage('❌ No hay destinatarios', 'error');
+        return;
+    }
+
+    // Verificar límite diario
+    const stats = gmailSender.getStats();
+    if (currentRecipients.length > stats.remaining) {
+        showMessage(`❌ Solo quedan ${stats.remaining} correos para hoy`, 'error');
+        return;
+    }
+
+    const total = currentRecipients.length;
+    const batches = Math.ceil(total / 100);
+    const timeEstimate = batches * 3;
+
+    if (!confirm(`📊 Enviar ${total} correos\n📦 ${batches} lotes\n⏱️ ~${timeEstimate} segundos\n\n¿Continuar?`)) {
+        return;
+    }
+
+    const originalText = sendBtn.innerHTML;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+    sendBtn.disabled = true;
+    progressContainer.style.display = 'block';
+    progressFill.style.width = '0%';
+    showMessage('', '');
+
+    try {
+        // Procesar adjuntos
+        const attachmentsBase64 = [];
+        for (const file of attachments) {
+            const base64 = await fileToBase64(file);
+            attachmentsBase64.push({
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                base64: base64
+            });
+        }
+
+        // Construir HTML con redes sociales
+        const redesHtml = previewSocial.innerHTML;
+        const finalHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+                    ${previewTopLogo.src && !previewTopLogo.src.includes('placehold') ? 
+                        `<img src="${previewTopLogo.src}" style="max-height: 80px;">` : ''}
+                </div>
+                <div style="padding: 0 10px;">
+                    <h2>${subjectInput.value || 'Sin asunto'}</h2>
+                    <div style="line-height: 1.8; margin-top: 16px;">
+                        ${previewBody.innerHTML}
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+                    ${previewBottomLogo.src && !previewBottomLogo.src.includes('placehold') ? 
+                        `<img src="${previewBottomLogo.src}" style="max-height: 50px; margin-bottom: 15px;"><br>` : ''}
+                    <div style="margin: 15px 0; font-size: 20px;">${redesHtml}</div>
+                    <p>© ${new Date().getFullYear()} - Enviado desde MailStudio</p>
+                </div>
+            </div>
+        `;
+
+        // Enviar por lotes
+        const BATCH_SIZE = 100;
+        let sent = 0;
+        let failed = 0;
+
+        for (let i = 0; i < currentRecipients.length; i += BATCH_SIZE) {
+            const batch = currentRecipients.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(currentRecipients.length / BATCH_SIZE);
+
+            try {
+                await gmailSender.sendEmail(
+                    batch.join(','),
+                    subjectInput.value || 'Sin asunto',
+                    finalHtml,
+                    attachmentsBase64
+                );
+                sent += batch.length;
+                const progress = Math.min(((i + BATCH_SIZE) / currentRecipients.length) * 100, 100);
+                progressFill.style.width = progress + '%';
+                sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${sent}/${currentRecipients.length} (${batchNum}/${totalBatches})`;
+            } catch (error) {
+                failed += batch.length;
+                console.error(`Error en lote ${batchNum}:`, error);
+            }
+
+            // Esperar entre lotes
+            if (i + BATCH_SIZE < currentRecipients.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        const statsFinal = gmailSender.getStats();
+        showMessage(`✅ Enviados: ${sent} | ❌ Fallidos: ${failed} | 📊 Total hoy: ${statsFinal.sentToday}/${statsFinal.maxDaily}`, 'success');
+        actualizarUIEstado();
+
+    } catch (error) {
+        console.error('Error:', error);
+        showMessage(`❌ Error: ${error.message}`, 'error');
+    } finally {
+        sendBtn.innerHTML = originalText;
+        sendBtn.disabled = false;
+        setTimeout(() => {
+            progressContainer.style.display = 'none';
+            progressFill.style.width = '0%';
+        }, 3000);
+    }
+}
+
+// ============================================
+// ESTADO DE ENVÍO - UI
+// ============================================
+function actualizarUIEstado() {
+    const hoy = new Date().toDateString();
+    if (hoy !== estadoEnvio.fechaReset) {
+        estadoEnvio.enviadosHoy = 0;
+        estadoEnvio.fechaReset = hoy;
+    }
+    // Solo mostramos en consola para no complicar
+    console.log(`📊 Enviados hoy: ${estadoEnvio.enviadosHoy}`);
+}
+
+sendBtn.onclick = sendWithGmail;
+
+// ============================================
 // INICIALIZACIÓN
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     initGmailAPI();
-    cargarEstadoEnvio();
-    
     if (localStorage.getItem('gmail_connected') === 'true') {
-        console.log('Intentando reconectar sesión anterior...');
+        console.log('Intentando reconectar...');
         setTimeout(() => {
             if (gmailSender.tokenClient && !gmailSender.accessToken) {
                 connectBtn.click();
@@ -1413,6 +941,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
 updatePreview();
 updateSocialLinks();
-
 console.log('✅ MailStudio cargado correctamente');
-console.log(`📊 Límites: ${CONFIG_ENVIO.MAX_DESTINATARIOS_DIA} correos/día, ${CONFIG_ENVIO.MAX_DESTINATARIOS_POR_MSG} por mensaje`);
