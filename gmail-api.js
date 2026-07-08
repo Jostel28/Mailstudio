@@ -16,21 +16,20 @@ class GmailSender {
         this.accessToken = null;
 
         // ============================================
-        // CONFIGURACIÓN DE LÍMITES
+        // CONFIGURACIÓN DE LÍMITES (MEJORADA)
         // ============================================
         this.config = {
-            // Límites de Gmail - SOLO LOS ESENCIALES
-            MAX_DAILY: 500,
-            MAX_PER_BATCH: 50,
+            // Límites de Gmail Workspace
+            MAX_DAILY: 2000,              // 2000 por día (Workspace)
+            MAX_PER_BATCH: 100,           // 100 por mensaje (Workspace)
             MAX_EMAIL_SIZE: 25 * 1024 * 1024,
             MAX_TOTAL_ATTACHMENTS: 10,
             MAX_ATTACHMENT_SIZE: 25 * 1024 * 1024,
             MAX_SUBJECT_LENGTH: 255,
-            // ✅ ELIMINADO: MAX_BODY_LENGTH - ya no se valida
             
             // Límites de tiempo
-            DELAY_BETWEEN_BATCHES: 3000,
-            DELAY_BETWEEN_EMAILS: 500,
+            DELAY_BETWEEN_BATCHES: 1000,
+            DELAY_BETWEEN_EMAILS: 10000,  // 10 segundos entre emails
             MAX_RETRIES: 3,
             RETRY_DELAY: 5000,
             
@@ -229,7 +228,7 @@ class GmailSender {
     }
 
     // ============================================
-    // 🔧 ENVÍO DE EMAIL CON ADJUNTOS - SIN VALIDACIÓN DE CONTENIDO
+    // ENVÍO DE EMAIL CON ADJUNTOS
     // ============================================
     async sendEmail(to, subject, htmlContent, attachments = []) {
         if (!this.accessToken) {
@@ -239,18 +238,15 @@ class GmailSender {
         const recipientsCount = Array.isArray(to) ? to.length : 1;
         this.checkDailyLimit(recipientsCount);
 
-        // ✅ SOLO VALIDACIÓN DE ASUNTO (255 caracteres)
         if (subject.length > this.config.MAX_SUBJECT_LENGTH) {
             throw new Error(`❌ El asunto excede los ${this.config.MAX_SUBJECT_LENGTH} caracteres.`);
         }
 
-        // ✅ VALIDACIÓN DE ADJUNTOS (tamaño y cantidad)
         const validation = this.validateAttachments(attachments);
         if (!validation.valid) {
             throw new Error(validation.errors.join('\n'));
         }
 
-        // ✅ CONSTRUIR EMAIL (SIN validación de contenido)
         const email = this.buildEmailMime(to, subject, htmlContent, attachments);
         
         let encodedEmail;
@@ -293,16 +289,15 @@ class GmailSender {
     }
 
     // ============================================
-    // 🔧 ENVÍO POR LOTES - SIN VALIDACIÓN DE CONTENIDO
+    // ENVÍO POR LOTES
     // ============================================
-    async sendBatch(recipients, subject, htmlContent, batchSize = 50, attachments = [], onProgress) {
+    async sendBatch(recipients, subject, htmlContent, batchSize = 100, attachments = [], onProgress) {
         if (!this.accessToken) {
             throw new Error('No hay sesión activa');
         }
 
         this.checkDailyLimit(recipients.length);
 
-        // ✅ SOLO VALIDACIÓN DE ADJUNTOS
         const validation = this.validateAttachments(attachments);
         if (!validation.valid) {
             throw new Error(validation.errors.join('\n'));
