@@ -1,6 +1,6 @@
 // ============================================
 // MAILSTUDIO - SCRIPT PRINCIPAL
-// VERSIÓN CORREGIDA
+// VERSIÓN CORREGIDA - ENVÍO INDIVIDUAL Y VALIDACIÓN MEJORADA
 // ============================================
 
 // ============================================
@@ -60,17 +60,18 @@ const CONFIG = {
 };
 
 // ============================================
-// TLDs VÁLIDOS
+// TLDs VÁLIDOS (Dominios de nivel superior)
 // ============================================
 const TLDS_VALIDOS = [
     'com', 'org', 'net', 'edu', 'gov', 'mil', 'co', 'es', 'mx', 'ar', 'cl', 'pe', 've',
     'ec', 'uy', 'py', 'bo', 'cr', 'pa', 'gt', 'hn', 'ni', 'do', 'pr', 'cu', 'sv', 'bz',
     'tt', 'jm', 'bb', 'bs', 'gd', 'kn', 'lc', 'vc', 'ag', 'ai', 'aw', 'bm', 'ky', 'dm',
-    'fk', 'gi', 'ms', 'pn', 'sh', 'tc', 'vg', 'vi', 'io', 'tv', 'me', 'ws', 'info', 'biz'
+    'fk', 'gi', 'ms', 'pn', 'sh', 'tc', 'vg', 'vi', 'io', 'tv', 'me', 'ws', 'info', 'biz',
+    'name', 'mobi', 'asia', 'cat', 'jobs', 'pro', 'tel', 'travel', 'xxx', 'eu'
 ];
 
 // ============================================
-// VALIDACIÓN DE EMAIL
+// VALIDACIÓN DE EMAIL - VERSIÓN MEJORADA
 // ============================================
 function validarEmail(email) {
     if (!email || typeof email !== 'string') {
@@ -79,41 +80,93 @@ function validarEmail(email) {
     
     email = email.trim().toLowerCase();
     
-    if (email.includes(' ')) return { valido: false, razon: 'Contiene espacios' };
-    if (!email.includes('@')) return { valido: false, razon: 'Falta @' };
-    if (!email.includes('.')) return { valido: false, razon: 'Falta punto' };
+    // 1. Verificar espacios
+    if (email.includes(' ')) {
+        return { valido: false, razon: 'Contiene espacios' };
+    }
     
+    // 2. Verificar @ y .
+    if (!email.includes('@') || !email.includes('.')) {
+        return { valido: false, razon: 'Formato inválido (falta @ o .)' };
+    }
+    
+    // 3. Verificar múltiples @
     const partes = email.split('@');
-    if (partes.length !== 2) return { valido: false, razon: 'Múltiples @' };
+    if (partes.length !== 2) {
+        return { valido: false, razon: 'Múltiples @' };
+    }
     
     const [local, dominio] = partes;
     
+    // 4. Normalizar parte local (eliminar acentos para validación)
     const localNormalizado = local.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (!/^[a-zA-Z0-9._-]+$/.test(localNormalizado)) {
-        return { valido: false, razon: 'Caracteres no permitidos' };
+        return { valido: false, razon: 'Caracteres no permitidos en parte local' };
     }
-    if (local.includes('..')) return { valido: false, razon: 'Puntos seguidos' };
+    
+    // 5. Verificar puntos seguidos en parte local
+    if (local.includes('..')) {
+        return { valido: false, razon: 'Puntos seguidos en parte local' };
+    }
+    
+    // 6. Verificar punto al inicio o final
     if (local.startsWith('.') || local.endsWith('.')) {
-        return { valido: false, razon: 'Empieza o termina con punto' };
-    }
-    if (local.length > 64) return { valido: false, razon: 'Parte local muy larga' };
-    
-    const domNormalizado = dominio.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (!/^[a-zA-Z0-9.-]+$/.test(domNormalizado)) {
-        return { valido: false, razon: 'Dominio inválido' };
+        return { valido: false, razon: 'Parte local empieza o termina con punto' };
     }
     
+    // 7. Verificar longitud de parte local
+    if (local.length > 64) {
+        return { valido: false, razon: 'Parte local muy larga (>64)' };
+    }
+    
+    // 8. Normalizar dominio (eliminar acentos para validación)
+    const dominioNormalizado = dominio.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!/^[a-zA-Z0-9.-]+$/.test(dominioNormalizado)) {
+        return { valido: false, razon: 'Dominio contiene caracteres no permitidos' };
+    }
+    
+    // 9. Verificar que el dominio tenga al menos una letra
+    if (!/[a-zA-Z]/.test(dominioNormalizado)) {
+        return { valido: false, razon: 'Dominio sin letras' };
+    }
+    
+    // 10. Verificar extensión (TLD)
     const partesDom = dominio.split('.');
-    if (partesDom.length < 2) return { valido: false, razon: 'Sin extensión' };
+    if (partesDom.length < 2) {
+        return { valido: false, razon: 'Dominio sin extensión' };
+    }
     
     const tld = partesDom[partesDom.length - 1].toLowerCase();
     if (!TLDS_VALIDOS.includes(tld)) {
-        return { valido: false, razon: `TLD .${tld} no válido` };
+        return { valido: false, razon: `Extensión .${tld} no válida` };
     }
     
-    if (dominio.includes('..')) return { valido: false, razon: 'Puntos seguidos en dominio' };
+    // 11. Verificar puntos seguidos en dominio
+    if (dominio.includes('..')) {
+        return { valido: false, razon: 'Puntos seguidos en dominio' };
+    }
+    
+    // 12. Verificar guion al inicio o final del dominio
     if (dominio.startsWith('-') || dominio.endsWith('-')) {
-        return { valido: false, razon: 'Dominio con guion al inicio/final' };
+        return { valido: false, razon: 'Dominio con guion al inicio o final' };
+    }
+    
+    // 13. Verificar que la parte local no sea solo números
+    if (/^\d+$/.test(local)) {
+        return { valido: false, razon: 'Parte local solo números' };
+    }
+    
+    // 14. Verificar que el dominio no sea una IP
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(dominioNormalizado)) {
+        return { valido: false, razon: 'Dominio es una dirección IP' };
+    }
+    
+    // 15. Verificar caracteres especiales en el dominio original
+    const caracteresEspeciales = dominio.match(/[^a-zA-Z0-9.-]/g);
+    if (caracteresEspeciales && caracteresEspeciales.length > 0) {
+        // Permitir solo si son letras con acentos que ya fueron normalizadas
+        // Si llegó aquí, hay caracteres no permitidos
+        return { valido: false, razon: 'Dominio contiene caracteres especiales' };
     }
     
     return { valido: true, razon: 'Email válido' };
@@ -335,7 +388,7 @@ function updateSocialLinks() {
     let html = '';
     for (const [key, url] of Object.entries(socialUrls)) {
         if (url && url.trim() !== '') {
-            html += `<a href="${url}" target="_blank" style="color: ${socialColors[key]}; text-decoration: none; font-size: 24px; margin: 0 8px;">
+            html += `<a href="${url}" target="_blank" style="color: ${socialColors[key]}; text-decoration: none; font-size: 24px; margin: 0 10px;">
                 <i class="fab ${socialIcons[key]}"></i>
             </a>`;
         }
@@ -578,7 +631,7 @@ fileAttachment.addEventListener('change', (e) => {
 });
 
 // ============================================
-// EXCEL - CARGAR DESTINATARIOS
+// EXCEL - CARGAR DESTINATARIOS (MEJORADO)
 // ============================================
 excelUpload.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -627,6 +680,7 @@ excelUpload.addEventListener('change', (e) => {
                 return;
             }
             
+            // Eliminar duplicados
             const vistos = new Set();
             const emailsUnicos = [];
             let duplicados = 0;
@@ -640,6 +694,7 @@ excelUpload.addEventListener('change', (e) => {
                 }
             }
             
+            // Validar cada email
             const validos = [];
             const invalidos = [];
             for (const email of emailsUnicos) {
@@ -651,9 +706,11 @@ excelUpload.addEventListener('change', (e) => {
                 }
             }
             
+            // Guardar solo los válidos
             currentRecipients = validos;
             emailList.textContent = `${validos.length} correos válidos (${invalidos.length} inválidos)`;
             
+            // Mostrar resumen detallado
             let mensaje = `📊 RESULTADO DE VALIDACIÓN\n\n`;
             mensaje += `📧 Total: ${emailsRaw.length}\n`;
             if (duplicados > 0) mensaje += `🔄 Duplicados: ${duplicados}\n`;
@@ -661,19 +718,19 @@ excelUpload.addEventListener('change', (e) => {
             mensaje += `❌ Inválidos: ${invalidos.length}\n\n`;
             
             if (invalidos.length > 0) {
-                mensaje += `📋 INVÁLIDOS:\n`;
-                for (const inv of invalidos.slice(0, 5)) {
+                mensaje += `📋 CORREOS INVÁLIDOS ELIMINADOS:\n`;
+                for (const inv of invalidos.slice(0, 10)) {
                     mensaje += `   ❌ ${inv.email}: ${inv.razon}\n`;
                 }
-                if (invalidos.length > 5) mensaje += `   ... y ${invalidos.length - 5} más\n`;
+                if (invalidos.length > 10) mensaje += `   ... y ${invalidos.length - 10} más\n`;
             }
             
             if (validos.length > 0) {
-                mensaje += `\n✅ VÁLIDOS:\n`;
-                for (const email of validos.slice(0, 3)) {
+                mensaje += `\n✅ CORREOS VÁLIDOS:\n`;
+                for (const email of validos.slice(0, 5)) {
                     mensaje += `   ✓ ${email}\n`;
                 }
-                if (validos.length > 3) mensaje += `   ... y ${validos.length - 3} más\n`;
+                if (validos.length > 5) mensaje += `   ... y ${validos.length - 5} más\n`;
             }
             
             alert(mensaje);
@@ -704,12 +761,13 @@ addEmailsBtn.addEventListener('click', () => {
             currentRecipients = [...new Set([...currentRecipients, ...validos])];
             emailList.textContent = `${currentRecipients.length} correos válidos (${invalidos.length} inválidos)`;
             manualEmails.value = '';
+            
             if (invalidos.length > 0) {
-                let msg = `⚠️ ${invalidos.length} correos inválidos:\n`;
-                for (const inv of invalidos.slice(0, 3)) {
+                let msg = `⚠️ ${invalidos.length} correos inválidos eliminados:\n`;
+                for (const inv of invalidos.slice(0, 5)) {
                     msg += `   ❌ ${inv.email}: ${inv.razon}\n`;
                 }
-                if (invalidos.length > 3) msg += `   ... y ${invalidos.length - 3} más`;
+                if (invalidos.length > 5) msg += `   ... y ${invalidos.length - 5} más`;
                 alert(msg);
             }
         }
@@ -770,7 +828,7 @@ disconnectBtn.addEventListener('click', () => {
 });
 
 // ============================================
-// ENVÍO DE CORREOS
+// ENVÍO DE CORREOS - INDIVIDUAL (UNO POR UNO)
 // ============================================
 async function sendWithGmail() {
     if (!gmailSender.accessToken) {
@@ -790,10 +848,9 @@ async function sendWithGmail() {
     }
 
     const total = currentRecipients.length;
-    const batches = Math.ceil(total / 100);
-    const timeEstimate = batches * 3;
+    const tiempoEstimado = Math.ceil(total * 3 / 60);
 
-    if (!confirm(`📊 Enviar ${total} correos\n📦 ${batches} lotes\n⏱️ ~${timeEstimate} segundos\n\n¿Continuar?`)) {
+    if (!confirm(`📊 Enviar ${total} correos (UNO POR UNO)\n⏱️ Tiempo estimado: ~${tiempoEstimado} minutos\n\n⚠️ Cada correo se envía individualmente para garantizar entrega\n\n¿Continuar?`)) {
         return;
     }
 
@@ -805,6 +862,7 @@ async function sendWithGmail() {
     showMessage('', '');
 
     try {
+        // Procesar adjuntos
         const attachmentsBase64 = [];
         for (const file of attachments) {
             const base64 = await fileToBase64(file);
@@ -815,6 +873,7 @@ async function sendWithGmail() {
             });
         }
 
+        // Construir HTML con redes sociales
         const redesHtml = previewSocial.innerHTML;
         const finalHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -837,38 +896,68 @@ async function sendWithGmail() {
             </div>
         `;
 
-        const BATCH_SIZE = 100;
-        let sent = 0;
-        let failed = 0;
-        const totalBatches = Math.ceil(currentRecipients.length / BATCH_SIZE);
+        let enviados = 0;
+        let fallidos = 0;
+        const fallidosLista = [];
+        const enviadosLista = [];
 
-        for (let i = 0; i < currentRecipients.length; i += BATCH_SIZE) {
-            const batch = currentRecipients.slice(i, i + BATCH_SIZE);
-            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        // Enviar UNO POR UNO (no en lote)
+        for (let i = 0; i < currentRecipients.length; i++) {
+            const email = currentRecipients[i];
+            const num = i + 1;
 
             try {
+                // Verificar límite antes de cada envío
+                const statsActual = gmailSender.getStats();
+                if (statsActual.remaining <= 0) {
+                    showMessage(`⏳ Límite diario alcanzado. Enviados: ${enviados}`, 'info');
+                    break;
+                }
+
                 await gmailSender.sendEmail(
-                    batch.join(','),
+                    email,
                     subjectInput.value || 'Sin asunto',
                     finalHtml,
                     attachmentsBase64
                 );
-                sent += batch.length;
-                const progress = Math.min(((i + BATCH_SIZE) / currentRecipients.length) * 100, 100);
+
+                enviados++;
+                enviadosLista.push(email);
+                const progress = (num / currentRecipients.length) * 100;
                 progressFill.style.width = progress + '%';
-                sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${sent}/${currentRecipients.length} (${batchNum}/${totalBatches})`;
+                sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${num}/${currentRecipients.length} - ✅ ${email}`;
+                console.log(`✅ [${num}/${currentRecipients.length}] Enviado a: ${email}`);
+
             } catch (error) {
-                failed += batch.length;
-                console.error(`Error en lote ${batchNum}:`, error);
+                fallidos++;
+                fallidosLista.push({ email: email, error: error.message });
+                console.error(`❌ [${num}/${currentRecipients.length}] Error a ${email}:`, error);
+                sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${num}/${currentRecipients.length} - ❌ ${email}`;
             }
 
-            if (i + BATCH_SIZE < currentRecipients.length) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            // Esperar entre envíos (2-4 segundos)
+            if (i < currentRecipients.length - 1) {
+                const espera = 2000 + Math.random() * 2000;
+                await new Promise(resolve => setTimeout(resolve, espera));
             }
         }
 
+        // Mostrar resumen final
         const statsFinal = gmailSender.getStats();
-        showMessage(`✅ Enviados: ${sent} | ❌ Fallidos: ${failed} | 📊 Total hoy: ${statsFinal.sentToday}/${statsFinal.maxDaily}`, 'success');
+        let mensajeFinal = `✅ ENVÍO COMPLETADO\n\n`;
+        mensajeFinal += `📊 ENVIADOS: ${enviados}\n`;
+        mensajeFinal += `❌ FALLIDOS: ${fallidos}\n`;
+        mensajeFinal += `📧 Total hoy: ${statsFinal.sentToday} / ${statsFinal.maxDaily}\n`;
+
+        if (fallidosLista.length > 0) {
+            mensajeFinal += `\n❌ CORREOS FALLIDOS:\n`;
+            for (const f of fallidosLista.slice(0, 5)) {
+                mensajeFinal += `   ❌ ${f.email}: ${f.error}\n`;
+            }
+            if (fallidosLista.length > 5) mensajeFinal += `   ... y ${fallidosLista.length - 5} más`;
+        }
+
+        showMessage(mensajeFinal, 'success');
 
     } catch (error) {
         console.error('Error:', error);
