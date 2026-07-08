@@ -825,4 +825,594 @@ excelUpload.addEventListener('change', (e) => {
             }
             
             // Guardar en variable global y actualizar UI
-            currentRecipients = validos
+            currentRecipients = validos;
+            estadoEnvio.emailsInvalidos = invalidos;
+            guardarEstadoEnvio();
+            
+            emailList.textContent = `${validos.length} correos válidos (${invalidos.length} inválidos)`;
+            
+            // Mostrar resumen
+            if (invalidos.length > 0 && validos.length === 0) {
+                alert(mensaje + '\n\n❌ No hay correos válidos para enviar.');
+            } else {
+                alert(mensaje);
+            }
+            
+            // Actualizar info de límites
+            const estado = gmailSender.getStats();
+            if (document.getElementById('quotaInfo')) {
+                document.getElementById('quotaInfo').innerHTML = `
+                    <i class="fas fa-chart-line"></i> 
+                    Destinatarios: ${validos.length} | 
+                    Enviados hoy: ${estado.sentToday} / ${estado.maxDaily} |
+                    Disponibles: ${estado.remaining}
+                `;
+            }
+            
+        } catch (error) {
+            alert('❌ Error al procesar el archivo:\n' + error.message);
+            console.error('Error Excel:', error);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+addEmailsBtn.addEventListener('click', () => {
+    const raw = manualEmails.value;
+    if(raw.trim()) {
+        const emails = raw.split(/[ ,;\n\r]+/).filter(e => e && e.trim() && e.includes('@'));
+        if (emails.length > 0) {
+            // Validar y agregar
+            const validos = [];
+            const invalidos = [];
+            for (const email of emails) {
+                const resultado = validarEmailExhaustivo(email);
+                if (resultado.valido) {
+                    validos.push(email);
+                } else {
+                    invalidos.push({ email: email, razon: resultado.razon });
+                }
+            }
+            
+            // Agregar solo los válidos
+            currentRecipients = [...new Set([...currentRecipients, ...validos])];
+            estadoEnvio.emailsInvalidos = [...estadoEnvio.emailsInvalidos, ...invalidos];
+            guardarEstadoEnvio();
+            
+            emailList.textContent = `${currentRecipients.length} correos válidos (${invalidos.length} inválidos)`;
+            manualEmails.value = '';
+            
+            if (invalidos.length > 0) {
+                let msg = `⚠️ ${invalidos.length} correos inválidos omitidos:\n`;
+                for (const inv of invalidos.slice(0, 5)) {
+                    msg += `   ❌ ${inv.email}: ${inv.razon}\n`;
+                }
+                if (invalidos.length > 5) msg += `   ... y ${invalidos.length - 5} más`;
+                alert(msg);
+            }
+        }
+    }
+});
+
+// ============================================
+// VERIFICAR LÍMITES DE ENVÍO
+// ============================================
+function verificarLimites(cantidadDestinatarios, tamanoBytes) {
+    cargarEstadoEnvio();
+    const hoy = new Date().toDateString();
+    
+    if (hoy !== estadoEnvio.fechaReset) {
+        estadoEnvio.enviadosHoy = 0;
+        estadoEnvio.fechaReset = hoy;
+        guardarEstadoEnvio();
+    }
+    
+    const errores = [];
+    
+    if (tamanoBytes > CONFIG_ENVIO.MAX_TAMANO_MB * 1024 * 1024) {
+        errores.push(`El mensaje supera el límite de ${CONFIG_ENVIO.MAX_TAMANO_MB}MB`);
+    }
+    
+    if (cantidadDestinatarios > CONFIG_ENVIO.MAX_DESTINATARIOS_POR_MSG) {
+        errores.push(`Máximo ${CONFIG_ENVIO.MAX_DESTINATARIOS_POR_MSG} destinatarios por mensaje`);
+    }
+    
+    if (estadoEnvio.enviadosHoy + cantidadDestinatarios > CONFIG_ENVIO.MAX_DESTINATARIOS_DIA) {
+        const restante = CONFIG_ENVIO.MAX_DESTINATARIOS_DIA - estadoEnvio.enviadosHoy;
+        errores.push(`Límite diario: solo quedan ${restante} créditos hoy`);
+    }
+    
+    return {
+        permitido: errores.length === 0,
+        errores: errores,
+        restante: CONFIG_ENVIO.MAX_DESTINATARIOS_DIA - estadoEnvio.enviadosHoy,
+        enviadosHoy: estadoEnvio.enviadosHoy
+    };
+}
+
+// ============================================
+// ENVIAR LOTE INDIVIDUAL
+// ============================================
+async function enviarLoteIndividual(loteEmails, asunto, htmlContent, attachmentsBase64, progresoCallback) {
+    let enviados = 0;
+    let fallidos = 0;
+    const emailsEnviados = [];
+    
+    for (let i = 0; i < loteEmails.length; i++) {
+        const email = loteEmails[i];
+        
+        // Verificar límite diario
+        const limite = verificarLimites(1, 0);
+        if (!limite.permitido) {
+            progresoCallback(`🛑 Envío detenido: ${limite.errores[0]}`);
+            break;
+        }
+        
+        try {
+            const result = await gmailSender.sendEmail(
+                email,
+                asunto,
+                htmlContent,
+                attachmentsBase64 || []
+            );
+            
+            enviados++;
+            estadoEnvio.enviadosHoy++;
+            estadoEnvio.emailsEnviados.push(email);
+            guardarEstadoEnvio();
+            actualizarUIEstado();
+            
+            progresoCallback(`✅ [${i + 1}/${loteEmails.length}] Enviado a: ${email}`);
+            
+        } catch (error) {
+            fallidos++;
+            estadoEnvio.emailsFallidos.push(email);
+            guardarEstadoEnvio();
+            progresoCallback(`❌ [${i + 1}/${loteEmails.length}] Error a ${email}: ${error.message}`);
+        }
+        
+        // Esperar entre emails (8-15 segundos)
+        if (i < loteEmails.length - 1) {
+            const espera = 8000 + Math.random() * 7000;
+            progresoCallback(`⏳ Esperando ${(espera/1000).toFixed(1)} segundos...`);
+            await new Promise(resolve => setTimeout(resolve, espera));
+        }
+    }
+    
+    return { enviados, fallidos, emailsEnviados };
+}
+
+// ============================================
+// PROCESAR ENVÍOS POR LOTES
+// ============================================
+async function procesarEnviosPorLotes(listaEmails, asunto, htmlContent, attachmentsBase64, progresoCallback) {
+    const TAMANO_LOTE = 100;
+    const PAUSA_LOTE = 2 * 60 * 60 * 1000; // 2 horas en milisegundos
+    
+    const lotes = [];
+    for (let i = 0; i < listaEmails.length; i += TAMANO_LOTE) {
+        lotes.push(listaEmails.slice(i, i + TAMANO_LOTE));
+    }
+    
+    const totalLotes = lotes.length;
+    let totalEnviados = 0;
+    let totalFallidos = 0;
+    const todosEnviados = [];
+    
+    progresoCallback(`📋 Se identificaron ${listaEmails.length} correos.`);
+    progresoCallback(`📦 Divididos en ${totalLotes} lotes de ${TAMANO_LOTE} emails.`);
+    
+    for (let i = 0; i < lotes.length; i++) {
+        const lote = lotes[i];
+        const numLote = i + 1;
+        
+        progresoCallback(`\n🚀 INICIANDO LOTE ${numLote}/${totalLotes}`);
+        progresoCallback(`📧 Emails en este lote: ${lote.length}`);
+        
+        // Verificar límite diario
+        const limite = verificarLimites(lote.length, 0);
+        if (!limite.permitido) {
+            progresoCallback(`🛑 No hay cupo: ${limite.errores[0]}`);
+            const pendientes = [];
+            for (let j = i; j < lotes.length; j++) {
+                pendientes.push(...lotes[j]);
+            }
+            guardarProgreso(totalEnviados, listaEmails.length, pendientes);
+            break;
+        }
+        
+        const resultado = await enviarLoteIndividual(
+            lote,
+            asunto,
+            htmlContent,
+            attachmentsBase64,
+            progresoCallback
+        );
+        
+        totalEnviados += resultado.enviados;
+        totalFallidos += resultado.fallidos;
+        todosEnviados.push(...resultado.emailsEnviados);
+        
+        progresoCallback(`✅ LOTE ${numLote} COMPLETADO`);
+        progresoCallback(`   Enviados: ${resultado.enviados} | Fallidos: ${resultado.fallidos}`);
+        progresoCallback(`   Progreso: ${totalEnviados}/${listaEmails.length}`);
+        
+        // Pausa entre lotes (excepto el último)
+        if (i < lotes.length - 1) {
+            const minutos = PAUSA_LOTE / 60000;
+            progresoCallback(`\n⏳ ESPERANDO ${minutos} MINUTOS...`);
+            progresoCallback(`💡 El envío se reanudará automáticamente después de 2 horas.`);
+            progresoCallback(`📌 Puedes cerrar esta ventana y volver a abrir para reanudar manualmente.`);
+            
+            // Guardar progreso para reanudar después
+            const pendientes = [];
+            for (let j = i + 1; j < lotes.length; j++) {
+                pendientes.push(...lotes[j]);
+            }
+            guardarProgreso(totalEnviados, listaEmails.length, pendientes);
+            
+            // Mostrar mensaje de espera
+            progresoCallback(`⏳ Envío en pausa. Continuará en 2 horas.`);
+            progresoCallback(`📊 Progreso guardado: ${totalEnviados}/${listaEmails.length}`);
+            
+            // En el navegador, no podemos esperar 2 horas sin bloquear
+            // Guardamos y mostramos mensaje
+            break;
+        }
+    }
+    
+    if (totalEnviados >= listaEmails.length || totalLotes === 0) {
+        if (typeof limpiarProgreso === 'function') {
+            limpiarProgreso();
+        } else {
+            console.warn('⚠️ limpiarProgreso no está definida');
+            estadoEnvio.progreso = null;
+            guardarEstadoEnvio();
+            actualizarUIEstado();
+        }
+    }
+    
+    return { totalEnviados, totalFallidos, todosEnviados };
+}
+
+// ============================================
+// REANUDAR ENVÍO PENDIENTE
+// ============================================
+function reanudarEnvioPendiente() {
+    cargarEstadoEnvio();
+    
+    if (!estadoEnvio.progreso || !estadoEnvio.progreso.pendientes || estadoEnvio.progreso.pendientes.length === 0) {
+        showMessage('ℹ️ No hay envíos pendientes para reanudar', 'info');
+        return;
+    }
+    
+    const pendientes = estadoEnvio.progreso.pendientes;
+    const total = estadoEnvio.progreso.total || pendientes.length;
+    const indice = estadoEnvio.progreso.indice || 0;
+    const limite = verificarLimites(0, 0);
+    
+    if (limite.restante <= 0) {
+        showMessage(`❌ No hay cupo disponible hoy. Espera a que se reinicie el contador.`, 'error');
+        return;
+    }
+    
+    const mensaje = `📊 ENVÍO PENDIENTE ENCONTRADO\n\n` +
+        `📌 Progreso: ${indice} de ${total} enviados\n` +
+        `📧 Pendientes: ${pendientes.length} correos\n` +
+        `📊 Disponibles hoy: ${limite.restante}\n` +
+        `⏳ Se enviarán en lotes de 100\n\n` +
+        `¿Deseas reanudar el envío?`;
+    
+    if (confirm(mensaje)) {
+        currentRecipients = pendientes;
+        sendWithGmail();
+    }
+}
+
+// ============================================
+// FUNCIÓN: Convertir archivo a Base64
+// ============================================
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = (error) => {
+            reject(error);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// ============================================
+// INTEGRACIÓN CON GMAIL API
+// ============================================
+
+async function initGmailAPI() {
+    try {
+        await gmailSender.initialize();
+        console.log('✅ Gmail API lista');
+    } catch (error) {
+        console.error('Error inicializando Gmail API:', error);
+        gmailStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de configuración';
+    }
+}
+
+window.addEventListener('gmail-connected', async (event) => {
+    const { user, token } = event.detail;
+    
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = 'inline-block';
+    gmailStatus.innerHTML = `<i class="fas fa-check-circle" style="color: #22c55e;"></i> Conectado: ${user.email}`;
+    
+    const stats = gmailSender.getStats();
+    quotaInfo.innerHTML = `
+        <i class="fas fa-chart-line"></i> 
+        Cuenta: ${user.email} | 
+        Enviados hoy: <strong>${stats.sentToday}</strong> / ${stats.maxDaily}
+        <span style="margin-left: 10px; color: ${stats.remaining < 50 ? '#dc2626' : '#22c55e'};">
+            ${stats.remaining > 0 ? `✅ ${stats.remaining} restantes` : '⚠️ Límite alcanzado'}
+        </span>
+        <br><small>⏳ Los límites se reinician cada día</small>
+    `;
+    
+    localStorage.setItem('gmail_connected', 'true');
+    localStorage.setItem('gmail_user', user.email);
+    cargarEstadoEnvio();
+});
+
+window.addEventListener('gmail-disconnected', () => {
+    connectBtn.style.display = 'inline-block';
+    disconnectBtn.style.display = 'none';
+    gmailStatus.innerHTML = '<i class="fas fa-circle-exclamation"></i> No conectado';
+    quotaInfo.innerHTML = '';
+    localStorage.removeItem('gmail_connected');
+    localStorage.removeItem('gmail_user');
+});
+
+connectBtn.addEventListener('click', () => {
+    if (gmailSender.tokenClient) {
+        gmailSender.tokenClient.requestAccessToken({ prompt: 'consent' });
+    } else {
+        alert('Inicializando Gmail API, espera un momento...');
+        setTimeout(() => connectBtn.click(), 1000);
+    }
+});
+
+disconnectBtn.addEventListener('click', () => {
+    if (confirm('¿Desconectar tu cuenta de Gmail? Ya no podrás enviar correos.')) {
+        gmailSender.disconnect();
+    }
+});
+
+// ============================================
+// FUNCIÓN: Mostrar mensajes
+// ============================================
+function showMessage(text, type) {
+    const msg = document.getElementById('sendMessage');
+    msg.textContent = text;
+    msg.className = type;
+    msg.style.display = text ? 'block' : 'none';
+}
+
+// ============================================
+// ENVÍO CON GMAIL - VERSIÓN MEJORADA CON LOTES
+// ============================================
+async function sendWithGmail() {
+    if (!gmailSender.accessToken) {
+        showMessage('❌ Primero conecta tu cuenta de Gmail', 'error');
+        return;
+    }
+    
+    if (currentRecipients.length === 0) {
+        showMessage('❌ No hay destinatarios. Agrega correos en la pestaña "Destinatarios"', 'error');
+        return;
+    }
+
+    // Verificar límites
+    const limite = verificarLimites(currentRecipients.length, 0);
+    if (!limite.permitido) {
+        showMessage(`❌ ${limite.errores[0]}`, 'error');
+        return;
+    }
+
+    // Verificar que no exceda el límite diario
+    if (currentRecipients.length > limite.restante) {
+        if (!confirm(`⚠️ Solo te quedan ${limite.restante} correos para hoy.\n` +
+            `Estás intentando enviar ${currentRecipients.length}.\n` +
+            `¿Quieres enviar solo los primeros ${limite.restante}?`)) {
+            return;
+        }
+        currentRecipients = currentRecipients.slice(0, limite.restante);
+    }
+    
+    // Calcular tiempo estimado
+    const total = currentRecipients.length;
+    const lotes = Math.ceil(total / 100);
+    const tiempoMinutos = total * 10 / 60;
+    const pausas = (lotes - 1) * 120; // 2 horas por pausa
+    const tiempoTotalHoras = (tiempoMinutos + pausas) / 60;
+    
+    if (!confirm(`📊 RESUMEN DE ENVÍO POR LOTES\n\n` +
+        `📌 Destinatarios: ${total}\n` +
+        `📦 Lotes: ${lotes} de 100 emails\n` +
+        `⏱️ Tiempo estimado: ~${tiempoTotalHoras.toFixed(1)} horas\n` +
+        `⏳ Pausa de 2 horas entre lotes\n` +
+        `📧 Disponibles hoy: ${limite.restante}\n` +
+        `📎 Adjuntos: ${attachments.length}\n\n` +
+        `⚠️ ¿Estás seguro de enviar estos correos?`)) {
+        return;
+    }
+
+    // Preparar UI
+    const originalText = sendBtn.innerHTML;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando archivos...';
+    sendBtn.disabled = true;
+    progressContainer.style.display = 'block';
+    progressFill.style.width = '0%';
+    showMessage('', '');
+
+    try {
+        // Procesar adjuntos
+        const attachmentsBase64 = [];
+        let processed = 0;
+        for (const file of attachments) {
+            sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Procesando ${processed + 1}/${attachments.length}: ${file.name}`;
+            const base64 = await fileToBase64(file);
+            attachmentsBase64.push({
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                size: file.size,
+                base64: base64
+            });
+            processed++;
+        }
+
+        // Construir HTML final (con redes sociales)
+        const redesHtml = previewSocial.innerHTML;
+        const finalHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+                    ${previewTopLogo.src && !previewTopLogo.src.includes('placehold') ? 
+                        `<img src="${previewTopLogo.src}" style="max-height: 80px; width: auto;">` : ''}
+                </div>
+                <div style="padding: 0 10px;">
+                    <h2 style="color: #1a1a2e;">${subjectInput.value || 'Sin asunto'}</h2>
+                    <div style="line-height: 1.8; color: #1e293b; margin-top: 16px;">
+                        ${previewBody.innerHTML}
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+                    ${previewBottomLogo.src && !previewBottomLogo.src.includes('placehold') ? 
+                        `<img src="${previewBottomLogo.src}" style="max-height: 50px; width: auto; margin-bottom: 15px;"><br>` : ''}
+                    <div style="margin: 15px 0; font-size: 20px;">
+                        ${redesHtml}
+                    </div>
+                    <p>© ${new Date().getFullYear()} - Enviado desde MailStudio</p>
+                </div>
+            </div>
+        `;
+
+        // Procesar envíos por lotes
+        sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Enviando correos...`;
+        
+        const resultados = await procesarEnviosPorLotes(
+            currentRecipients,
+            subjectInput.value || 'Sin asunto',
+            finalHtml,
+            attachmentsBase64,
+            (mensaje) => {
+                // Actualizar UI con el progreso
+                if (mensaje.includes('LOTE') && mensaje.includes('/')) {
+                    const match = mensaje.match(/LOTE (\d+)\/(\d+)/);
+                    if (match) {
+                        const actual = parseInt(match[1]);
+                        const totalLotes = parseInt(match[2]);
+                        const porcentaje = (actual / totalLotes) * 100;
+                        progressFill.style.width = Math.min(porcentaje, 100) + '%';
+                    }
+                }
+                // Mostrar en la consola
+                console.log(mensaje);
+                // Actualizar botón
+                const shortMsg = mensaje.length > 50 ? mensaje.substring(0, 50) + '...' : mensaje;
+                sendBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${shortMsg}`;
+            }
+        );
+        
+        // Mostrar resumen final
+        const stats = gmailSender.getStats();
+        let mensajeFinal = `✅ ¡Campaña enviada!\n\n`;
+        mensajeFinal += `📊 ENVIADOS: ${resultados.totalEnviados}\n`;
+        mensajeFinal += `❌ FALLIDOS: ${resultados.totalFallidos}\n`;
+        mensajeFinal += `📧 Total hoy: ${stats.sentToday} / ${stats.maxDaily}\n`;
+        
+        if (estadoEnvio.progreso && estadoEnvio.progreso.pendientes && estadoEnvio.progreso.pendientes.length > 0) {
+            mensajeFinal += `\n⏳ Envío en pausa. Pendientes: ${estadoEnvio.progreso.pendientes.length} correos.\n`;
+            mensajeFinal += `💡 Ve a la pestaña "Estado" para reanudar cuando quieras.`;
+        }
+        
+        showMessage(mensajeFinal, 'success');
+        actualizarUIEstado();
+        
+    } catch (error) {
+        console.error('Error:', error);
+        showMessage(`❌ Error: ${error.message}`, 'error');
+    } finally {
+        sendBtn.innerHTML = originalText;
+        sendBtn.disabled = false;
+        setTimeout(() => {
+            if (progressContainer.style.display !== 'none') {
+                progressContainer.style.display = 'none';
+                progressFill.style.width = '0%';
+            }
+        }, 5000);
+    }
+}
+
+// ============================================
+// EVENTOS DE BOTONES
+// ============================================
+sendBtn.onclick = sendWithGmail;
+
+reanudarBtn?.addEventListener('click', reanudarEnvioPendiente);
+limpiarEstadoBtn?.addEventListener('click', limpiarEstadoCompleto);
+
+// ============================================
+// PLANTILLAS
+// ============================================
+document.querySelectorAll('.plantilla-card').forEach(card => {
+    card.addEventListener('click', () => {
+        const template = card.getAttribute('data-template');
+        if (plantillas[template]) {
+            editor.innerHTML = plantillas[template];
+            updatePreview();
+        }
+    });
+});
+
+// ============================================
+// DISPOSITIVOS (VISTA PREVIA)
+// ============================================
+const deviceBtns = document.querySelectorAll('.device-btn');
+const emailPreview = document.getElementById('emailPreview');
+deviceBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        deviceBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        emailPreview.classList.remove('pc', 'tablet', 'mobile');
+        emailPreview.classList.add(btn.getAttribute('data-device') === 'pc' ? 'pc' : 'mobile');
+    });
+});
+
+// ============================================
+// REDES SOCIALES
+// ============================================
+document.querySelectorAll('#socialWeb, #socialInstagram, #socialFacebook, #socialTiktok, #socialYoutube, #socialTwitter').forEach(input => {
+    if (input) input.addEventListener('input', updateSocialLinks);
+});
+
+// ============================================
+// INICIALIZACIÓN
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    initGmailAPI();
+    cargarEstadoEnvio();
+    
+    if (localStorage.getItem('gmail_connected') === 'true') {
+        console.log('Intentando reconectar sesión anterior...');
+        setTimeout(() => {
+            if (gmailSender.tokenClient && !gmailSender.accessToken) {
+                connectBtn.click();
+            }
+        }, 2000);
+    }
+});
+
+updatePreview();
+updateSocialLinks();
+
+console.log('✅ MailStudio cargado correctamente');
+console.log(`📊 Límites: ${CONFIG_ENVIO.MAX_DESTINATARIOS_DIA} correos/día, ${CONFIG_ENVIO.MAX_DESTINATARIOS_POR_MSG} por mensaje`);
