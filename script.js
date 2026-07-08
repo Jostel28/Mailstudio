@@ -1,6 +1,6 @@
 // ============================================
 // MAILSTUDIO - SCRIPT PRINCIPAL
-// VERSIÓN SIMPLIFICADA Y FUNCIONAL
+// VERSIÓN CORREGIDA
 // ============================================
 
 // ============================================
@@ -56,7 +56,7 @@ const CONFIG = {
     MAX_PER_BATCH: 100,
     MAX_ATTACHMENTS: 10,
     MAX_SIZE_MB: 25,
-    DELAY_BETWEEN_EMAILS: 10000,
+    DELAY_BETWEEN_EMAILS: 3000,
 };
 
 // ============================================
@@ -70,17 +70,6 @@ const TLDS_VALIDOS = [
 ];
 
 // ============================================
-// ESTADO DE ENVÍO
-// ============================================
-let estadoEnvio = {
-    enviadosHoy: 0,
-    fechaReset: new Date().toDateString(),
-    emailsEnviados: [],
-    emailsFallidos: [],
-    emailsInvalidos: []
-};
-
-// ============================================
 // VALIDACIÓN DE EMAIL
 // ============================================
 function validarEmail(email) {
@@ -90,7 +79,6 @@ function validarEmail(email) {
     
     email = email.trim().toLowerCase();
     
-    // Verificaciones básicas
     if (email.includes(' ')) return { valido: false, razon: 'Contiene espacios' };
     if (!email.includes('@')) return { valido: false, razon: 'Falta @' };
     if (!email.includes('.')) return { valido: false, razon: 'Falta punto' };
@@ -100,7 +88,6 @@ function validarEmail(email) {
     
     const [local, dominio] = partes;
     
-    // Validar parte local
     const localNormalizado = local.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (!/^[a-zA-Z0-9._-]+$/.test(localNormalizado)) {
         return { valido: false, razon: 'Caracteres no permitidos' };
@@ -111,7 +98,6 @@ function validarEmail(email) {
     }
     if (local.length > 64) return { valido: false, razon: 'Parte local muy larga' };
     
-    // Validar dominio
     const domNormalizado = dominio.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (!/^[a-zA-Z0-9.-]+$/.test(domNormalizado)) {
         return { valido: false, razon: 'Dominio inválido' };
@@ -442,7 +428,93 @@ navItems.forEach(item => {
 });
 
 // ============================================
-// EVENT LISTENERS
+// PLANTILLAS
+// ============================================
+const plantillas = {
+    pombo: `<div style="background:linear-gradient(135deg, #facc15, #f59e0b); padding:30px; border-radius:24px; text-align:center; color:white;">
+        <h1 style="font-size:32px; margin:0;">🎪 POMBOALONA 2025</h1>
+        <p style="font-size:18px;">✨ Un lugar para la imaginación ✨</p>
+    </div>
+    <div style="padding:20px; text-align:center;">
+        <p><strong>📅 14 al 20 de junio</strong></p>
+        <p>📍 Plaza de las Flores</p>
+        <p>🎭 Espectáculos, talleres y mucha diversión para toda la familia.</p>
+        <p style="background:#facc15; display:inline-block; padding:10px 20px; border-radius:40px;"><strong>🎟️ ¡Te esperamos!</strong></p>
+    </div>`,
+    corporativa: `<div style="background:#0f172a; padding:25px; border-radius:16px; color:white;">
+        <h2 style="margin:0;">Comunicado Oficial</h2>
+        <p style="opacity:0.8;">Fundación Rafael Pombo</p>
+    </div>
+    <div style="padding:20px; color:#1e293b;">
+        <p>Estimados colaboradores,</p>
+        <p>Nos complace informarles sobre nuestras próximas actividades culturales.</p>
+        <ul><li>📚 Talleres de lectura</li><li>🎨 Clases creativas</li><li>🎭 Presentaciones artísticas</li></ul>
+        <hr><p><strong>Contacto:</strong> info@fundacionpombo.org</p>
+    </div>`,
+    promocional: `<div style="background:#1a1a2e; color:white; padding:20px; text-align:center;">
+        <h2>🔥 OFERTA ESPECIAL 🔥</h2>
+        <p style="font-size:24px;">50% OFF</p>
+    </div>
+    <div style="padding:20px; text-align:center;">
+        <p>Vacaciones creativas para niños</p>
+        <p style="font-size:32px; color:#f59e0b;"><strong>14 - 20 JUNIO</strong></p>
+        <button style="background:#22c55e; color:white; border:none; padding:12px 24px; border-radius:40px;">📞 Reserva ahora</button>
+    </div>`,
+    moderna: `<div style="display:flex; gap:20px; align-items:center; background:#f8fafc; padding:20px; border-radius:24px;">
+        <i class="fas fa-envelope-open-text" style="font-size:48px; color:#facc15;"></i>
+        <div><h2 style="margin:0;">Novedades</h2><p>Mantente informado</p></div>
+    </div>
+    <div style="padding:20px;">
+        <p>🌟 Próximos eventos en la Fundación Rafael Pombo</p>
+        <p>📅 Junio 2025 - Programa completo disponible</p>
+        <p style="background:#e2e8f0; padding:12px; border-radius:12px;">🎯 "Un lugar para la imaginación"</p>
+    </div>`,
+    festival: `<div style="background:radial-gradient(circle, #facc15, #f59e0b); padding:30px; text-align:center;">
+        <i class="fas fa-music" style="font-size:50px; color:white;"></i>
+        <h1 style="color:white;">FESTIVAL POMBO</h1>
+    </div>
+    <div style="padding:20px; text-align:center;">
+        <p><strong>🎵 14 - 20 de junio</strong></p>
+        <p>🎪 Plaza de las Flores</p>
+        <p>🎭 Presentaciones en vivo</p>
+        <p>🍔 Zona de comidas</p>
+        <p style="margin-top:16px;"><strong>¡Entrada libre!</strong></p>
+    </div>`
+};
+
+document.querySelectorAll('.plantilla-card').forEach(card => {
+    card.addEventListener('click', () => {
+        const template = card.getAttribute('data-template');
+        if (plantillas[template]) {
+            editor.innerHTML = plantillas[template];
+            updatePreview();
+        }
+    });
+});
+
+// ============================================
+// DISPOSITIVOS (VISTA PREVIA)
+// ============================================
+const deviceBtns = document.querySelectorAll('.device-btn');
+const emailPreview = document.getElementById('emailPreview');
+deviceBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        deviceBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        emailPreview.classList.remove('pc', 'tablet', 'mobile');
+        emailPreview.classList.add(btn.getAttribute('data-device') === 'pc' ? 'pc' : 'mobile');
+    });
+});
+
+// ============================================
+// REDES SOCIALES - EVENTOS
+// ============================================
+document.querySelectorAll('#socialWeb, #socialInstagram, #socialFacebook, #socialTiktok, #socialYoutube, #socialTwitter').forEach(input => {
+    if (input) input.addEventListener('input', updateSocialLinks);
+});
+
+// ============================================
+// EVENT LISTENERS BASE
 // ============================================
 boldBtn.addEventListener('click', () => applyFormat('bold'));
 italicBtn.addEventListener('click', () => applyFormat('italic'));
@@ -519,7 +591,6 @@ excelUpload.addEventListener('change', (e) => {
             const sheet = workbook.Sheets[workbook.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(sheet);
             
-            // Buscar columna de email
             let emailColumn = null;
             if (rows.length > 0) {
                 const headers = Object.keys(rows[0]);
@@ -540,7 +611,6 @@ excelUpload.addEventListener('change', (e) => {
                 return;
             }
             
-            // Extraer emails
             const emailsRaw = [];
             for (const row of rows) {
                 const email = row[emailColumn];
@@ -557,7 +627,6 @@ excelUpload.addEventListener('change', (e) => {
                 return;
             }
             
-            // Eliminar duplicados
             const vistos = new Set();
             const emailsUnicos = [];
             let duplicados = 0;
@@ -571,7 +640,6 @@ excelUpload.addEventListener('change', (e) => {
                 }
             }
             
-            // Validar emails
             const validos = [];
             const invalidos = [];
             for (const email of emailsUnicos) {
@@ -583,11 +651,9 @@ excelUpload.addEventListener('change', (e) => {
                 }
             }
             
-            // Guardar
             currentRecipients = validos;
             emailList.textContent = `${validos.length} correos válidos (${invalidos.length} inválidos)`;
             
-            // Mostrar resumen
             let mensaje = `📊 RESULTADO DE VALIDACIÓN\n\n`;
             mensaje += `📧 Total: ${emailsRaw.length}\n`;
             if (duplicados > 0) mensaje += `🔄 Duplicados: ${duplicados}\n`;
@@ -651,92 +717,6 @@ addEmailsBtn.addEventListener('click', () => {
 });
 
 // ============================================
-// PLANTILLAS
-// ============================================
-const plantillas = {
-    pombo: `<div style="background:linear-gradient(135deg, #facc15, #f59e0b); padding:30px; border-radius:24px; text-align:center; color:white;">
-                <h1 style="font-size:32px; margin:0;">🎪 POMBOALONA 2025</h1>
-                <p style="font-size:18px;">✨ Un lugar para la imaginación ✨</p>
-            </div>
-            <div style="padding:20px; text-align:center;">
-                <p><strong>📅 14 al 20 de junio</strong></p>
-                <p>📍 Plaza de las Flores</p>
-                <p>🎭 Espectáculos, talleres y mucha diversión para toda la familia.</p>
-                <p style="background:#facc15; display:inline-block; padding:10px 20px; border-radius:40px;"><strong>🎟️ ¡Te esperamos!</strong></p>
-            </div>`,
-    corporativa: `<div style="background:#0f172a; padding:25px; border-radius:16px; color:white;">
-                    <h2 style="margin:0;">Comunicado Oficial</h2>
-                    <p style="opacity:0.8;">Fundación Rafael Pombo</p>
-                  </div>
-                  <div style="padding:20px; color:#1e293b;">
-                    <p>Estimados colaboradores,</p>
-                    <p>Nos complace informarles sobre nuestras próximas actividades culturales.</p>
-                    <ul><li>📚 Talleres de lectura</li><li>🎨 Clases creativas</li><li>🎭 Presentaciones artísticas</li></ul>
-                    <hr><p><strong>Contacto:</strong> info@fundacionpombo.org</p>
-                  </div>`,
-    promocional: `<div style="background:#1a1a2e; color:white; padding:20px; text-align:center;">
-                    <h2>🔥 OFERTA ESPECIAL 🔥</h2>
-                    <p style="font-size:24px;">50% OFF</p>
-                  </div>
-                  <div style="padding:20px; text-align:center;">
-                    <p>Vacaciones creativas para niños</p>
-                    <p style="font-size:32px; color:#f59e0b;"><strong>14 - 20 JUNIO</strong></p>
-                    <button style="background:#22c55e; color:white; border:none; padding:12px 24px; border-radius:40px;">📞 Reserva ahora</button>
-                  </div>`,
-    moderna: `<div style="display:flex; gap:20px; align-items:center; background:#f8fafc; padding:20px; border-radius:24px;">
-                <i class="fas fa-envelope-open-text" style="font-size:48px; color:#facc15;"></i>
-                <div><h2 style="margin:0;">Novedades</h2><p>Mantente informado</p></div>
-              </div>
-              <div style="padding:20px;">
-                <p>🌟 Próximos eventos en la Fundación Rafael Pombo</p>
-                <p>📅 Junio 2025 - Programa completo disponible</p>
-                <p style="background:#e2e8f0; padding:12px; border-radius:12px;">🎯 "Un lugar para la imaginación"</p>
-              </div>`,
-    festival: `<div style="background:radial-gradient(circle, #facc15, #f59e0b); padding:30px; text-align:center;">
-                <i class="fas fa-music" style="font-size:50px; color:white;"></i>
-                <h1 style="color:white;">FESTIVAL POMBO</h1>
-              </div>
-              <div style="padding:20px; text-align:center;">
-                <p><strong>🎵 14 - 20 de junio</strong></p>
-                <p>🎪 Plaza de las Flores</p>
-                <p>🎭 Presentaciones en vivo</p>
-                <p>🍔 Zona de comidas</p>
-                <p style="margin-top:16px;"><strong>¡Entrada libre!</strong></p>
-              </div>`
-};
-
-document.querySelectorAll('.plantilla-card').forEach(card => {
-    card.addEventListener('click', () => {
-        const template = card.getAttribute('data-template');
-        if (plantillas[template]) {
-            editor.innerHTML = plantillas[template];
-            updatePreview();
-        }
-    });
-});
-
-// ============================================
-// DISPOSITIVOS (VISTA PREVIA)
-// ============================================
-const deviceBtns = document.querySelectorAll('.device-btn');
-const emailPreview = document.getElementById('emailPreview');
-deviceBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        deviceBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        emailPreview.classList.remove('pc', 'tablet', 'mobile');
-        emailPreview.classList.add(btn.getAttribute('data-device') === 'pc' ? 'pc' : 'mobile');
-    });
-});
-
-// ============================================
-// REDES SOCIALES - EVENTOS
-// ============================================
-document.querySelectorAll('#socialWeb, #socialInstagram, #socialFacebook, #socialTiktok, #socialYoutube, #socialTwitter').forEach(input => {
-    if (input) input.addEventListener('input', updateSocialLinks);
-});
-
-// ============================================
 // GMAIL API - CONEXIÓN
 // ============================================
 async function initGmailAPI() {
@@ -790,7 +770,7 @@ disconnectBtn.addEventListener('click', () => {
 });
 
 // ============================================
-// ENVÍO DE CORREOS (SIMPLIFICADO)
+// ENVÍO DE CORREOS
 // ============================================
 async function sendWithGmail() {
     if (!gmailSender.accessToken) {
@@ -803,7 +783,6 @@ async function sendWithGmail() {
         return;
     }
 
-    // Verificar límite diario
     const stats = gmailSender.getStats();
     if (currentRecipients.length > stats.remaining) {
         showMessage(`❌ Solo quedan ${stats.remaining} correos para hoy`, 'error');
@@ -826,7 +805,6 @@ async function sendWithGmail() {
     showMessage('', '');
 
     try {
-        // Procesar adjuntos
         const attachmentsBase64 = [];
         for (const file of attachments) {
             const base64 = await fileToBase64(file);
@@ -837,7 +815,6 @@ async function sendWithGmail() {
             });
         }
 
-        // Construir HTML con redes sociales
         const redesHtml = previewSocial.innerHTML;
         const finalHtml = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -860,15 +837,14 @@ async function sendWithGmail() {
             </div>
         `;
 
-        // Enviar por lotes
         const BATCH_SIZE = 100;
         let sent = 0;
         let failed = 0;
+        const totalBatches = Math.ceil(currentRecipients.length / BATCH_SIZE);
 
         for (let i = 0; i < currentRecipients.length; i += BATCH_SIZE) {
             const batch = currentRecipients.slice(i, i + BATCH_SIZE);
             const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-            const totalBatches = Math.ceil(currentRecipients.length / BATCH_SIZE);
 
             try {
                 await gmailSender.sendEmail(
@@ -886,7 +862,6 @@ async function sendWithGmail() {
                 console.error(`Error en lote ${batchNum}:`, error);
             }
 
-            // Esperar entre lotes
             if (i + BATCH_SIZE < currentRecipients.length) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
@@ -894,7 +869,6 @@ async function sendWithGmail() {
 
         const statsFinal = gmailSender.getStats();
         showMessage(`✅ Enviados: ${sent} | ❌ Fallidos: ${failed} | 📊 Total hoy: ${statsFinal.sentToday}/${statsFinal.maxDaily}`, 'success');
-        actualizarUIEstado();
 
     } catch (error) {
         console.error('Error:', error);
@@ -907,19 +881,6 @@ async function sendWithGmail() {
             progressFill.style.width = '0%';
         }, 3000);
     }
-}
-
-// ============================================
-// ESTADO DE ENVÍO - UI
-// ============================================
-function actualizarUIEstado() {
-    const hoy = new Date().toDateString();
-    if (hoy !== estadoEnvio.fechaReset) {
-        estadoEnvio.enviadosHoy = 0;
-        estadoEnvio.fechaReset = hoy;
-    }
-    // Solo mostramos en consola para no complicar
-    console.log(`📊 Enviados hoy: ${estadoEnvio.enviadosHoy}`);
 }
 
 sendBtn.onclick = sendWithGmail;
